@@ -1,26 +1,554 @@
 @import "tailwindcss";
 
+/* =========================================================
+   TOKENS DE TEMA
+   ========================================================= */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0d0d0f;
+  --foreground: #ececec;
+
+  --card: #161618;
+  --card-foreground: #f3f4f6;
+
+  --surface-0: #0d0d0f;
+  --surface-1: #161618;
+  --surface-2: #1d1d21;
+  --surface-3: #26262b;
+
+  --text-1: #f5f5f5;
+  --text-2: #d4d4d8;
+  --text-3: #a1a1aa;
+  --text-4: #71717a;
+
+  --muted: #a1a1aa;
+  --border: #2a2a2f;
+  --border-strong: #3a3a41;
+
+  --input: #18181b;
+  --input-hover: #202024;
+  --input-foreground: #f5f5f5;
+  --placeholder: #71717a;
+
+  --ring: rgba(161, 161, 170, 0.24);
+
+  --button-neutral: #202024;
+  --button-neutral-hover: #2a2a30;
+  --button-neutral-border: #3a3a41;
+
+  --button-primary: #f4f4f5;
+  --button-primary-hover: #e4e4e7;
+  --button-primary-foreground: #111113;
+
+  --button-danger: #34181a;
+  --button-danger-hover: #431d20;
+  --button-danger-border: #5f262c;
+
+  --success: #163121;
+  --warning: #473314;
+  --danger: #431f22;
+  --info: #1d2d3d;
+
+  --shadow-soft: 0 8px 24px rgba(0, 0, 0, 0.24);
+  --shadow-card: 0 6px 18px rgba(0, 0, 0, 0.2);
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+
+  --sidebar-width: 16rem;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* =========================================================
+   RESET BASE
+   ========================================================= */
+* {
+  box-sizing: border-box;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  vertical-align: middle;
+}
+
+::selection {
+  background: rgba(245, 245, 245, 0.14);
+  color: var(--foreground);
+}
+
+/* =========================================================
+   FORMULÁRIOS E INTERAÇÃO BASE
+   ========================================================= */
+input,
+textarea,
+select {
+  background-color: var(--input);
+  color: var(--input-foreground);
+  border: 1px solid var(--border);
+  outline: none;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+input:hover,
+textarea:hover,
+select:hover {
+  background-color: var(--input-hover);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--placeholder);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+select option {
+  background-color: var(--surface-1);
+  color: var(--foreground);
+}
+
+button {
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--border-strong);
+}
+
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   SCROLLBAR
+   ========================================================= */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a52 #131316;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #131316;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #4a4a52;
+  border-radius: 999px;
+  border: 2px solid #131316;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #5b5b65;
+}
+
+/* =========================================================
+   UTILITÁRIOS DE ESTRUTURA
+   ========================================================= */
+.sidebar-structure {
+  width: var(--sidebar-width);
+}
+
+@media (min-width: 1024px) {
+  .layout-with-sidebar {
+    padding-left: var(--sidebar-width);
+  }
+}
+
+/* =========================================================
+   UTILITÁRIOS DE SUPERFÍCIE
+   ========================================================= */
+.surface-0 {
+  background-color: var(--surface-0);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+
+.surface-1 {
+  background-color: var(--surface-1);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+
+.surface-2 {
+  background-color: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+
+.surface-3 {
+  background-color: var(--surface-3);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+}
+
+/* =========================================================
+   UTILITÁRIOS DE TEXTO
+   ========================================================= */
+.text-theme-1 {
+  color: var(--text-1);
+}
+
+.text-theme-2 {
+  color: var(--text-2);
+}
+
+.text-theme-3 {
+  color: var(--text-3);
+}
+
+.text-theme-4 {
+  color: var(--text-4);
+}
+
+.text-muted {
+  color: var(--muted);
+}
+
+/* =========================================================
+   UTILITÁRIOS DE BORDA
+   ========================================================= */
+.border-theme {
+  border-color: var(--border);
+}
+
+.border-theme-strong {
+  border-color: var(--border-strong);
+}
+
+/* =========================================================
+   UTILITÁRIOS DE BACKGROUND
+   ========================================================= */
+.bg-theme-background {
+  background-color: var(--background);
+}
+
+.bg-theme-card {
+  background-color: var(--card);
+}
+
+/* =========================================================
+   UTILITÁRIOS DE SOMBRA
+   ========================================================= */
+.shadow-soft {
+  box-shadow: var(--shadow-soft);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+/* =========================================================
+   UTILITÁRIOS DE RAIO
+   ========================================================= */
+.radius-xl {
+  border-radius: var(--radius-xl);
+}
+
+.radius-2xl {
+  border-radius: var(--radius-2xl);
+}
+
+.radius-3xl {
+  border-radius: var(--radius-3xl);
+}
+
+/* =========================================================
+   BOTÕES
+   ========================================================= */
+.button-neutral {
+  background-color: var(--button-neutral);
+  color: var(--text-1);
+  border: 1px solid var(--button-neutral-border);
+}
+
+.button-neutral:hover {
+  background-color: var(--button-neutral-hover);
+}
+
+.button-primary {
+  background-color: var(--button-primary);
+  color: var(--button-primary-foreground);
+  border: 1px solid transparent;
+}
+
+.button-primary:hover {
+  background-color: var(--button-primary-hover);
+}
+
+.button-danger {
+  background-color: var(--button-danger);
+  color: #fecaca;
+  border: 1px solid var(--button-danger-border);
+}
+
+.button-danger:hover {
+  background-color: var(--button-danger-hover);
+}
+
+.button-success {
+  background-color: var(--success);
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.25);
+}
+
+.button-success:hover {
+  filter: brightness(1.08);
+}
+
+/* =========================================================
+   STATUS / BADGES
+   ========================================================= */
+.status-success {
+  background-color: var(--success);
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.status-warning {
+  background-color: var(--warning);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.status-danger {
+  background-color: var(--danger);
+  color: #fecaca;
+  border: 1px solid var(--button-danger-border);
+}
+
+.status-info {
+  background-color: var(--info);
+  color: #bfdbfe;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.status-neutral {
+  background-color: var(--surface-0);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+.badge-success {
+  background-color: var(--success);
+  color: #bbf7d0;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.badge-neutral {
+  background-color: var(--surface-3);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+/* =========================================================
+   HELPERS INTERATIVOS
+   ========================================================= */
+.interactive-surface {
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.interactive-surface:hover {
+  background-color: var(--surface-2);
+  color: var(--text-1);
+  border-color: var(--border);
+}
+
+.interactive-surface:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--ring);
+  border-color: var(--border-strong);
+}
+
+.interactive-surface-active {
+  background-color: var(--surface-3);
+  color: var(--text-1);
+  border: 1px solid var(--border-strong);
+}
+
+/* =========================================================
+   CARDS E PAINÉIS
+   ========================================================= */
+.card-theme {
+  background-color: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+.panel-theme {
+  background-color: var(--surface-1);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-soft);
+}
+
+.overlay-backdrop {
+  background-color: rgba(0, 0, 0, 0.72);
+}
+
+/* =========================================================
+   TEXTOS DE SEÇÃO E DETALHE
+   ========================================================= */
+.section-heading-title {
+  color: var(--text-1);
+}
+
+.section-heading-description {
+  color: var(--text-3);
+}
+
+.detail-label {
+  color: var(--text-4);
+}
+
+.detail-value-primary {
+  color: var(--text-1);
+}
+
+.detail-value-secondary {
+  color: var(--text-2);
+}
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+.sidebar-theme {
+  background-color: var(--surface-0);
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-section-divider {
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-eyebrow {
+  color: var(--text-4);
+}
+
+.sidebar-title {
+  color: var(--text-1);
+}
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+.header-theme {
+  background-color: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.header-title {
+  color: var(--text-1);
+}
+
+.header-subtitle {
+  color: var(--text-3);
+}
+
+/* =========================================================
+   NAVEGAÇÃO
+   ========================================================= */
+.nav-link {
+  color: var(--text-3);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.nav-link:hover {
+  background-color: var(--surface-1);
+  color: var(--text-1);
+}
+
+.nav-link-active {
+  background-color: var(--surface-3);
+  color: var(--text-1);
+  border: 1px solid var(--border-strong);
 }
