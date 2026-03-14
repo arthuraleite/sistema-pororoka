@@ -4,6 +4,7 @@ import { TarefaChecklistFilhas } from "@/components/tarefas/tarefa-checklist-fil
 import { TarefaComentariosPanel } from "@/components/tarefas/tarefa-comentarios-panel";
 import { TarefaFormBase } from "@/components/tarefas/tarefa-form-base";
 import type {
+  EscopoObjetivo,
   StatusTarefa,
   TarefaDetalhe,
   UsuarioResumoTarefa,
@@ -16,6 +17,8 @@ type Props = {
   usuarios: UsuarioResumoTarefa[];
   usuarioAtualId?: string | null;
   podeModerarComentarios?: boolean;
+  podeSelecionarObjetivoGlobal?: boolean;
+  equipes?: Array<{ id: string; nome: string }>;
   onClose: () => void;
   onEditRequest?: () => void;
   onViewRequest?: () => void;
@@ -25,6 +28,8 @@ type Props = {
   onAtualizarStatus?: (novoStatus: StatusTarefa) => void | Promise<void>;
   onSubmit?: (values: {
     tipo: "pai";
+    escopoObjetivo?: EscopoObjetivo;
+    equipeId?: string | null;
     titulo: string;
     descricao?: string | null;
     projetoId?: string | null;
@@ -56,9 +61,13 @@ type Props = {
 };
 
 function tituloModal(mode: Props["mode"]) {
-  if (mode === "create") return "Nova tarefa-pai";
-  if (mode === "edit") return "Editar tarefa-pai";
-  return "Tarefa-pai";
+  if (mode === "create") return "Novo objetivo";
+  if (mode === "edit") return "Editar objetivo";
+  return "Objetivo";
+}
+
+function formatarStatus(status: string) {
+  return status.replaceAll("_", " ");
 }
 
 export function TarefaPaiModal({
@@ -68,6 +77,8 @@ export function TarefaPaiModal({
   usuarios,
   usuarioAtualId,
   podeModerarComentarios = false,
+  podeSelecionarObjetivoGlobal = false,
+  equipes = [],
   onClose,
   onEditRequest,
   onViewRequest,
@@ -91,7 +102,7 @@ export function TarefaPaiModal({
                 {tituloModal(mode)}
               </h2>
               <p className="mt-1 text-sm text-zinc-500">
-                Modal próprio da macro, com acompanhamento das tarefas-filhas.
+                Objetivo com acompanhamento das tarefas-filhas vinculadas.
               </p>
             </div>
 
@@ -149,7 +160,7 @@ export function TarefaPaiModal({
                         onClick={() => onAtualizarStatus?.(status)}
                         className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
                       >
-                        Marcar {status.replaceAll("_", " ")}
+                        Marcar {formatarStatus(status)}
                       </button>
                     ))}
                 </div>
@@ -164,7 +175,7 @@ export function TarefaPaiModal({
                       onClick={() => onReabrir?.(status)}
                       className="rounded-xl border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm text-amber-200 transition hover:bg-amber-950/60"
                     >
-                      Reabrir em {status.replaceAll("_", " ")}
+                      Reabrir em {formatarStatus(status)}
                     </button>
                   ))}
                 </div>
@@ -179,15 +190,21 @@ export function TarefaPaiModal({
                   mode={mode}
                   tipo="pai"
                   usuarios={usuarios}
+                  equipes={equipes}
                   allowProjeto
+                  allowEquipe
                   allowPrioridade
                   allowStatus={mode !== "create"}
+                  allowEscopoObjetivo
+                  canSelectObjetivoGlobal={podeSelecionarObjetivoGlobal}
                   initialValues={
-                    tarefa
+                    tarefa?.tipo === "pai"
                       ? {
                           titulo: tarefa.titulo,
                           descricao: tarefa.descricao,
                           projetoId: tarefa.projetoId,
+                          escopoObjetivo: tarefa.escopoObjetivo,
+                          equipeId: tarefa.equipeId,
                           prioridade: tarefa.prioridade,
                           status: tarefa.status,
                           dataEntrega: tarefa.dataEntrega,
@@ -201,14 +218,17 @@ export function TarefaPaiModal({
                   }
                   onSubmit={async (values) => {
                     if (!onSubmit) return;
+
                     await onSubmit({
                       ...values,
                       tipo: "pai",
+                      escopoObjetivo:
+                        values.escopoObjetivo === null ? undefined : values.escopoObjetivo,
                     });
                   }}
                   submitLabel={
                     mode === "create"
-                      ? "Criar macro"
+                      ? "Criar objetivo"
                       : mode === "edit"
                         ? "Salvar alterações"
                         : "Fechar"

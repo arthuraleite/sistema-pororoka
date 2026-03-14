@@ -8,6 +8,7 @@ import { criarCategoriaTarefa } from "@/actions/tarefas/criar-categoria-tarefa";
 import { TarefaLinksField } from "@/components/tarefas/tarefa-links-field";
 import type {
   CategoriaTarefa,
+  EscopoObjetivo,
   PrioridadeTarefa,
   StatusTarefa,
   TipoTarefa,
@@ -35,6 +36,7 @@ type Props = {
     equipeId?: string | null;
     categoriaId?: string | null;
     projetoId?: string | null;
+    escopoObjetivo?: EscopoObjetivo;
     prioridade?: PrioridadeTarefa | null;
     status?: StatusTarefa;
     dataEntrega?: string;
@@ -52,6 +54,8 @@ type Props = {
   allowCategoria?: boolean;
   allowStatus?: boolean;
   allowPrioridade?: boolean;
+  allowEscopoObjetivo?: boolean;
+  canSelectObjetivoGlobal?: boolean;
   onSubmit?: (values: {
     tipo: TipoTarefa;
     titulo: string;
@@ -60,6 +64,7 @@ type Props = {
     equipeId?: string | null;
     categoriaId?: string | null;
     projetoId?: string | null;
+    escopoObjetivo?: EscopoObjetivo | null;
     prioridade?: PrioridadeTarefa | null;
     status?: StatusTarefa;
     dataEntrega: string;
@@ -84,6 +89,14 @@ const statusOptions: Array<{ value: StatusTarefa; label: string }> = [
   { value: "em_pausa", label: "Em pausa" },
   { value: "em_atraso", label: "Em atraso" },
   { value: "concluida", label: "Concluída" },
+];
+
+const escopoObjetivoOptions: Array<{
+  value: EscopoObjetivo;
+  label: string;
+}> = [
+  { value: "global", label: "Objetivo global" },
+  { value: "equipe", label: "Objetivo de equipe" },
 ];
 
 const labelClassName = "text-[13px] font-medium text-zinc-300";
@@ -193,12 +206,18 @@ export function TarefaFormBase({
   allowCategoria = false,
   allowStatus = false,
   allowPrioridade = false,
+  allowEscopoObjetivo = false,
+  canSelectObjetivoGlobal = false,
   onSubmit,
   submitLabel,
 }: Props) {
   const readonly = mode === "view";
 
   const [tipoAtual, setTipoAtual] = useState<TipoTarefa>(tipo);
+  const [escopoObjetivo, setEscopoObjetivo] = useState<EscopoObjetivo>(
+    initialValues?.escopoObjetivo ??
+      (tipo === "pai" && !canSelectObjetivoGlobal ? "equipe" : "global"),
+  );
   const [titulo, setTitulo] = useState(initialValues?.titulo ?? "");
   const [descricao, setDescricao] = useState(initialValues?.descricao ?? "");
   const [tarefaPaiId, setTarefaPaiId] = useState(initialValues?.tarefaPaiId ?? "");
@@ -231,6 +250,7 @@ export function TarefaFormBase({
   const [mostrarCategoriaMenu, setMostrarCategoriaMenu] = useState(false);
   const [mostrarSugestoesResponsaveis, setMostrarSugestoesResponsaveis] =
     useState(false);
+  const [mostrarEscopoMenu, setMostrarEscopoMenu] = useState(false);
 
   const [linksAbertos, setLinksAbertos] = useState(
     (initialValues?.links?.length ?? 0) > 0,
@@ -246,8 +266,26 @@ export function TarefaFormBase({
 
   useEffect(() => {
     if (
+      tipoAtual === "pai" &&
+      !canSelectObjetivoGlobal &&
+      escopoObjetivo !== "equipe"
+    ) {
+      setEscopoObjetivo("equipe");
+    }
+  }, [tipoAtual, canSelectObjetivoGlobal, escopoObjetivo]);
+
+  useEffect(() => {
+    if (tipoAtual === "pai" && escopoObjetivo === "global") {
+      setEquipeId("");
+      setCategoriaId("");
+      setCategoriaBusca("");
+    }
+  }, [tipoAtual, escopoObjetivo]);
+
+  useEffect(() => {
+    if (
       allowEquipe &&
-      tipoAtual !== "pai" &&
+      (tipoAtual !== "pai" || escopoObjetivo === "equipe") &&
       !readonly &&
       mode === "create" &&
       !equipeId &&
@@ -255,7 +293,15 @@ export function TarefaFormBase({
     ) {
       setEquipeId(equipes[0].id);
     }
-  }, [allowEquipe, tipoAtual, readonly, mode, equipeId, equipes]);
+  }, [
+    allowEquipe,
+    tipoAtual,
+    escopoObjetivo,
+    readonly,
+    mode,
+    equipeId,
+    equipes,
+  ]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -266,6 +312,7 @@ export function TarefaFormBase({
         setMostrarStatusMenu(false);
         setMostrarCategoriaMenu(false);
         setMostrarSugestoesResponsaveis(false);
+        setMostrarEscopoMenu(false);
       }
     }
 
@@ -306,12 +353,22 @@ export function TarefaFormBase({
     [tarefasPaiOptions, tarefaPaiId],
   );
 
+  const escopoSelecionado = useMemo(
+    () =>
+      escopoObjetivoOptions.find((item) => item.value === escopoObjetivo) ?? null,
+    [escopoObjetivo],
+  );
+
   const usuariosElegiveis = useMemo(() => {
     if (tipoAtual === "pai") {
       return usuarios.filter((usuario) =>
-        ["admin_supremo", "coordenador_geral", "coordenador_equipe"].includes(
-          usuario.perfil,
-        ),
+        [
+          "admin_supremo",
+          "coordenador_geral",
+          "coordenador_equipe",
+          "assistente",
+          "gestor_financeiro",
+        ].includes(usuario.perfil),
       );
     }
 
@@ -404,6 +461,7 @@ export function TarefaFormBase({
     if (!titulo.trim()) return;
     if (!dataEntrega) return;
     if (tipoAtual === "filha" && !tarefaPaiId) return;
+    if (tipoAtual === "pai" && escopoObjetivo === "equipe" && !equipeId) return;
     if (tipoAtual !== "pai" && !equipeId) return;
     if (tipoAtual !== "pai" && !categoriaId) return;
     if (tipoAtual !== "pai" && !prioridade) return;
@@ -425,9 +483,15 @@ export function TarefaFormBase({
         titulo: titulo.trim(),
         descricao: descricao.trim() || null,
         tarefaPaiId: tarefaPaiId || null,
-        equipeId: equipeId || null,
+        equipeId:
+          tipoAtual === "pai"
+            ? escopoObjetivo === "equipe"
+              ? equipeId || null
+              : null
+            : equipeId || null,
         categoriaId: categoriaId || null,
         projetoId: projetoId.trim() || null,
+        escopoObjetivo: tipoAtual === "pai" ? escopoObjetivo : null,
         prioridade: prioridade || null,
         status,
         dataEntrega,
@@ -443,6 +507,9 @@ export function TarefaFormBase({
   const resolvedSubmitLabel =
     submitLabel ??
     (mode === "create" ? "Salvar" : mode === "edit" ? "Atualizar" : "Fechar");
+
+  const mostrarCampoEquipe =
+    allowEquipe && (tipoAtual !== "pai" || escopoObjetivo === "equipe");
 
   return (
     <>
@@ -465,11 +532,42 @@ export function TarefaFormBase({
               </div>
             ) : null}
 
+            {tipoAtual === "pai" && allowEscopoObjetivo ? (
+              <DropdownField
+                label="Escopo do objetivo"
+                value={escopoSelecionado?.label ?? null}
+                placeholder="Selecione o escopo"
+                open={mostrarEscopoMenu && !readonly}
+                onToggle={() => !readonly && setMostrarEscopoMenu((v) => !v)}
+                disabled={readonly}
+              >
+                <div className="max-h-56 overflow-y-auto p-1.5">
+                  {escopoObjetivoOptions
+                    .filter((item) =>
+                      canSelectObjetivoGlobal ? true : item.value !== "global",
+                    )
+                    .map((item) => (
+                      <button
+                        key={item.value}
+                        type="button"
+                        onClick={() => {
+                          setEscopoObjetivo(item.value);
+                          setMostrarEscopoMenu(false);
+                        }}
+                        className={dropdownButtonClassName}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                </div>
+              </DropdownField>
+            ) : null}
+
             {tipoAtual === "filha" ? (
               <DropdownField
-                label="Tarefa-pai"
+                label="Objetivo-pai"
                 value={tarefaPaiSelecionada?.titulo ?? null}
-                placeholder="Selecione a macro"
+                placeholder="Selecione o objetivo"
                 open={mostrarTarefaPaiMenu && !readonly}
                 onToggle={() => !readonly && setMostrarTarefaPaiMenu((v) => !v)}
                 disabled={readonly}
@@ -500,7 +598,7 @@ export function TarefaFormBase({
                 onChange={(event) => setTitulo(event.target.value)}
                 disabled={readonly}
                 className={fieldClassName}
-                placeholder="Título da tarefa"
+                placeholder={tipoAtual === "pai" ? "Título do objetivo" : "Título da tarefa"}
               />
             </div>
 
@@ -531,7 +629,7 @@ export function TarefaFormBase({
             ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
-              {allowEquipe && tipoAtual !== "pai" ? (
+              {mostrarCampoEquipe ? (
                 equipes.length <= 1 ? (
                   <div className="space-y-1.5">
                     <label className={labelClassName}>Equipe</label>
@@ -855,7 +953,11 @@ export function TarefaFormBase({
 
             {linksAbertos ? (
               <div className="pt-2">
-                <TarefaLinksField value={links} onChange={setLinks} disabled={readonly} />
+                <TarefaLinksField
+                  value={links}
+                  onChange={setLinks}
+                  disabled={readonly}
+                />
               </div>
             ) : null}
           </section>
@@ -877,7 +979,9 @@ export function TarefaFormBase({
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl">
             <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
               <div>
-                <h3 className="text-base font-semibold text-zinc-100">Criar categoria</h3>
+                <h3 className="text-base font-semibold text-zinc-100">
+                  Criar categoria
+                </h3>
                 <p className="mt-1 text-sm text-zinc-500">
                   A categoria será criada para a equipe selecionada.
                 </p>

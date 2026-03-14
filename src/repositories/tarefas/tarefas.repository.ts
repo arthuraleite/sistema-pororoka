@@ -505,7 +505,10 @@ type QueryLike = {
   eq: (column: string, value: string) => QueryLike;
   order: (column: string, options?: { ascending?: boolean }) => QueryLike;
   range: (from: number, to: number) => QueryLike;
-  or: (filters: string) => QueryLike;
+  or: (
+    filters: string,
+    options?: { foreignTable?: string },
+  ) => QueryLike;
 };
 
 function applyFiltros(query: QueryLike, filtros?: TarefasFiltros): QueryLike {
@@ -532,6 +535,16 @@ function applyFiltros(query: QueryLike, filtros?: TarefasFiltros): QueryLike {
 
   if (filtros.equipeIds?.length) {
     current = current.in("equipe_id", filtros.equipeIds);
+  }
+
+  if (filtros.responsavelIds?.length) {
+    const filtroResponsaveis = filtros.responsavelIds
+      .map((id) => `usuario_id.eq.${id}`)
+      .join(",");
+
+    current = current.or(filtroResponsaveis, {
+      foreignTable: "responsaveis_rel",
+    });
   }
 
   if (filtros.dataInicio) {

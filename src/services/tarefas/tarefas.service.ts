@@ -4,6 +4,7 @@ import { TarefasRepository } from "@/repositories/tarefas/tarefas.repository";
 import type {
   CriarTarefaInput,
   EditarTarefaInput,
+  PerfilSistema,
   ReabrirTarefaInput,
   StatusTarefa,
   Tarefa,
@@ -14,10 +15,17 @@ import type {
 
 type ClienteSupabase = SupabaseClient;
 
+type ContextoUsuarioTarefas = {
+  usuarioId: string;
+  perfil: PerfilSistema;
+  equipeId: string | null;
+};
+
 type ListarTarefasParams = {
   filtros?: TarefasFiltros;
   pagina?: number;
   limite?: number;
+  contextoUsuario?: ContextoUsuarioTarefas;
 };
 
 type ExcluirInput = {
@@ -29,6 +37,38 @@ type MoverStatusInput = {
   novoStatus: StatusTarefa;
 };
 
+function podeVerTudo(perfil: PerfilSistema) {
+  return perfil === "admin_supremo" || perfil === "coordenador_geral";
+}
+
+function podeVerObjetivosGlobais(perfil: PerfilSistema) {
+  return perfil === "admin_supremo" || perfil === "coordenador_geral";
+}
+
+function podeCriarObjetivoGlobal(perfil: PerfilSistema) {
+  return perfil === "admin_supremo" || perfil === "coordenador_geral";
+}
+
+function podeCriarObjetivoEquipe(perfil: PerfilSistema) {
+  return (
+    perfil === "admin_supremo" ||
+    perfil === "coordenador_geral" ||
+    perfil === "coordenador_equipe" ||
+    perfil === "assistente" ||
+    perfil === "gestor_financeiro"
+  );
+}
+
+function podeVerObjetivoEquipe(perfil: PerfilSistema) {
+  return (
+    perfil === "admin_supremo" ||
+    perfil === "coordenador_geral" ||
+    perfil === "coordenador_equipe" ||
+    perfil === "assistente" ||
+    perfil === "gestor_financeiro"
+  );
+}
+
 export class TarefasService {
   private readonly repository: TarefasRepository;
 
@@ -37,15 +77,96 @@ export class TarefasService {
   }
 
   async listar(params?: ListarTarefasParams): Promise<TarefasPaginadas<Tarefa>> {
-    return this.repository.listar({
+    const contexto = params?.contextoUsuario;
+
+    const data = await this.repository.listar({
       filtros: params?.filtros,
       pagina: params?.pagina,
       limite: params?.limite,
     });
+
+    if (!contexto) {
+      return data;
+    }
+
+    const itensFiltrados = data.itens.filter((item) => {
+      if (podeVerTudo(contexto.perfil)) {
+        return true;
+      }
+
+      if (item.tipo === "pai") {
+        if (item.escopoObjetivo === "global") {
+          return podeVerObjetivosGlobais(contexto.perfil);
+        }
+
+        if (item.escopoObjetivo === "equipe") {
+          return (
+            podeVerObjetivoEquipe(contexto.perfil) &&
+            item.equipeId !== null &&
+            contexto.equipeId !== null &&
+            item.equipeId === contexto.equipeId
+          );
+        }
+
+        return false;
+      }
+
+      if (!contexto.equipeId) {
+        return false;
+      }
+
+      return item.equipeId === contexto.equipeId;
+    });
+
+    return {
+      itens: itensFiltrados,
+      total: itensFiltrados.length,
+      pagina: data.pagina,
+      limite: data.limite,
+      totalPaginas: Math.ceil(itensFiltrados.length / data.limite),
+    };
   }
 
-  async buscarPorId(id: string): Promise<TarefaDetalhe | null> {
-    return this.repository.buscarPorId(id);
+  async buscarPorId(
+    id: string,
+    contextoUsuario?: ContextoUsuarioTarefas,
+  ): Promise<TarefaDetalhe | null> {
+    const tarefa = await this.repository.buscarPorId(id);
+
+    if (!tarefa) {
+      return null;
+    }
+
+    if (!contextoUsuario) {
+      return tarefa;
+    }
+
+    if (podeVerTudo(contextoUsuario.perfil)) {
+      return tarefa;
+    }
+
+    if (tarefa.tipo === "pai") {
+      if (tarefa.escopoObjetivo === "global") {
+        return podeVerObjetivosGlobais(contextoUsuario.perfil) ? tarefa : null;
+      }
+
+      if (tarefa.escopoObjetivo === "equipe") {
+        return podeVerObjetivoEquipe(contextoUsuario.perfil) &&
+          tarefa.equipeId !== null &&
+          contextoUsuario.equipeId !== null &&
+          tarefa.equipeId === contextoUsuario.equipeId
+          ? tarefa
+          : null;
+      }
+
+      return null;
+    }
+
+    if (!contextoUsuario.equipeId) {
+      return null;
+    }
+
+    return tarefa.equipeId === contextoUsuario.equipeId ? tarefa : null;
   }
 
   private async buscarUsuarioAtualId(): Promise<string> {
@@ -61,12 +182,62 @@ export class TarefasService {
   async criar(input: CriarTarefaInput): Promise<TarefaDetalhe> {
     const usuarioId = await this.buscarUsuarioAtualId();
 
+    const { data: usuarioAtual, error: usuarioError } = await this.supabase
+      .from("usuarios")
+      .select("id, perfil, equipe_id")
+      .eq("auth_user_id", usuarioId)
+      .maybeSingle();
+
+    if (usuarioError || !usuarioAtual) {
+      throw new Error("Não foi possível carregar o contexto do usuário.");
+    }
+
     if (!input.responsavelIds?.length) {
       throw new Error("A tarefa precisa ter ao menos um responsável.");
     }
 
     if ((input.links ?? []).length > 5) {
       throw new Error("A tarefa pode ter no máximo 5 links.");
+    }
+
+    if (input.tipo === "pai") {
+      if (input.escopoObjetivo === "global") {
+        if (!podeCriarObjetivoGlobal(usuarioAtual.perfil)) {
+          throw new Error("Você não tem permissão para criar objetivo global.");
+        }
+      }
+
+      if (input.escopoObjetivo === "equipe") {
+        if (!podeCriarObjetivoEquipe(usuarioAtual.perfil)) {
+          throw new Error("Você não tem permissão para criar objetivo de equipe.");
+        }
+
+        if (!input.equipeId) {
+          throw new Error("Objetivo de equipe precisa de uma equipe vinculada.");
+        }
+
+        if (
+          !podeVerTudo(usuarioAtual.perfil) &&
+          usuarioAtual.equipe_id !== input.equipeId
+        ) {
+          throw new Error(
+            "Você só pode criar objetivo de equipe para sua própria equipe.",
+          );
+        }
+      }
+    } else {
+      if (!input.equipeId) {
+        throw new Error("Tarefas operacionais precisam de equipe.");
+      }
+
+      if (
+        !podeVerTudo(usuarioAtual.perfil) &&
+        usuarioAtual.equipe_id !== input.equipeId
+      ) {
+        throw new Error(
+          "Você só pode criar tarefas operacionais da sua própria equipe.",
+        );
+      }
     }
 
     const payloadTarefa =
@@ -85,8 +256,8 @@ export class TarefasService {
             status: input.status ?? "a_fazer",
             data_entrega: input.dataEntrega,
             hora_entrega: input.horaEntrega ?? null,
-            criado_por_id: usuarioId,
-            atualizado_por_id: usuarioId,
+            criado_por_id: usuarioAtual.id,
+            atualizado_por_id: usuarioAtual.id,
           }
         : {
             tipo: input.tipo,
@@ -102,8 +273,8 @@ export class TarefasService {
             status: input.status ?? "a_fazer",
             data_entrega: input.dataEntrega,
             hora_entrega: input.horaEntrega ?? null,
-            criado_por_id: usuarioId,
-            atualizado_por_id: usuarioId,
+            criado_por_id: usuarioAtual.id,
+            atualizado_por_id: usuarioAtual.id,
           };
 
     const tarefaId = crypto.randomUUID();
@@ -119,11 +290,13 @@ export class TarefasService {
       );
     }
 
-    const responsaveisPayload = input.responsavelIds.map((usuarioResponsavelId) => ({
-      tarefa_id: tarefaId,
-      usuario_id: usuarioResponsavelId,
-      atribuido_por_id: usuarioId,
-    }));
+    const responsaveisPayload = input.responsavelIds.map(
+      (usuarioResponsavelId) => ({
+        tarefa_id: tarefaId,
+        usuario_id: usuarioResponsavelId,
+        atribuido_por_id: usuarioAtual.id,
+      }),
+    );
 
     const { error: responsaveisError } = await this.supabase
       .from("tarefas_responsaveis")
@@ -140,7 +313,7 @@ export class TarefasService {
         tarefa_id: tarefaId,
         url: link.url,
         texto: link.texto ?? null,
-        criado_por_id: usuarioId,
+        criado_por_id: usuarioAtual.id,
       }));
 
       const { error: linksError } = await this.supabase
@@ -152,7 +325,11 @@ export class TarefasService {
       }
     }
 
-    const detalhe = await this.buscarPorId(tarefaId);
+    const detalhe = await this.buscarPorId(tarefaId, {
+      usuarioId: usuarioAtual.id,
+      perfil: usuarioAtual.perfil,
+      equipeId: usuarioAtual.equipe_id,
+    });
 
     if (!detalhe) {
       throw new Error("Tarefa criada, mas não foi possível recarregar o detalhe.");
@@ -164,12 +341,68 @@ export class TarefasService {
   async editar(input: EditarTarefaInput): Promise<TarefaDetalhe> {
     const usuarioId = await this.buscarUsuarioAtualId();
 
+    const { data: usuarioAtual, error: usuarioError } = await this.supabase
+      .from("usuarios")
+      .select("id, perfil, equipe_id")
+      .eq("auth_user_id", usuarioId)
+      .maybeSingle();
+
+    if (usuarioError || !usuarioAtual) {
+      throw new Error("Não foi possível carregar o contexto do usuário.");
+    }
+
+    const tarefaAtual = await this.buscarPorId(input.id, {
+      usuarioId: usuarioAtual.id,
+      perfil: usuarioAtual.perfil,
+      equipeId: usuarioAtual.equipe_id,
+    });
+
+    if (!tarefaAtual) {
+      throw new Error("Tarefa não encontrada ou sem permissão de acesso.");
+    }
+
     if (!input.responsavelIds?.length) {
       throw new Error("A tarefa precisa ter ao menos um responsável.");
     }
 
     if ((input.links ?? []).length > 5) {
       throw new Error("A tarefa pode ter no máximo 5 links.");
+    }
+
+    if (input.tipo === "pai") {
+      if (input.escopoObjetivo === "global") {
+        if (!podeCriarObjetivoGlobal(usuarioAtual.perfil)) {
+          throw new Error("Você não tem permissão para editar objetivo global.");
+        }
+      }
+
+      if (input.escopoObjetivo === "equipe") {
+        if (!podeCriarObjetivoEquipe(usuarioAtual.perfil)) {
+          throw new Error("Você não tem permissão para editar objetivo de equipe.");
+        }
+
+        if (!input.equipeId) {
+          throw new Error("Objetivo de equipe precisa de uma equipe vinculada.");
+        }
+
+        if (
+          !podeVerTudo(usuarioAtual.perfil) &&
+          usuarioAtual.equipe_id !== input.equipeId
+        ) {
+          throw new Error(
+            "Você só pode editar objetivo de equipe da sua própria equipe.",
+          );
+        }
+      }
+    } else {
+      if (
+        !podeVerTudo(usuarioAtual.perfil) &&
+        tarefaAtual.equipeId !== usuarioAtual.equipe_id
+      ) {
+        throw new Error(
+          "Você só pode editar tarefas operacionais da sua própria equipe.",
+        );
+      }
     }
 
     const payloadTarefa =
@@ -185,7 +418,7 @@ export class TarefasService {
             status: input.status ?? "a_fazer",
             data_entrega: input.dataEntrega,
             hora_entrega: input.horaEntrega ?? null,
-            atualizado_por_id: usuarioId,
+            atualizado_por_id: usuarioAtual.id,
           }
         : {
             escopo_objetivo: null,
@@ -198,7 +431,7 @@ export class TarefasService {
             status: input.status ?? "a_fazer",
             data_entrega: input.dataEntrega,
             hora_entrega: input.horaEntrega ?? null,
-            atualizado_por_id: usuarioId,
+            atualizado_por_id: usuarioAtual.id,
           };
 
     const { error: updateError } = await this.supabase
@@ -223,11 +456,13 @@ export class TarefasService {
       );
     }
 
-    const responsaveisPayload = input.responsavelIds.map((usuarioResponsavelId) => ({
-      tarefa_id: input.id,
-      usuario_id: usuarioResponsavelId,
-      atribuido_por_id: usuarioId,
-    }));
+    const responsaveisPayload = input.responsavelIds.map(
+      (usuarioResponsavelId) => ({
+        tarefa_id: input.id,
+        usuario_id: usuarioResponsavelId,
+        atribuido_por_id: usuarioAtual.id,
+      }),
+    );
 
     const { error: insertRespError } = await this.supabase
       .from("tarefas_responsaveis")
@@ -253,7 +488,7 @@ export class TarefasService {
         tarefa_id: input.id,
         url: link.url,
         texto: link.texto ?? null,
-        criado_por_id: usuarioId,
+        criado_por_id: usuarioAtual.id,
       }));
 
       const { error: insertLinksError } = await this.supabase
@@ -265,7 +500,11 @@ export class TarefasService {
       }
     }
 
-    const detalhe = await this.buscarPorId(input.id);
+    const detalhe = await this.buscarPorId(input.id, {
+      usuarioId: usuarioAtual.id,
+      perfil: usuarioAtual.perfil,
+      equipeId: usuarioAtual.equipe_id,
+    });
 
     if (!detalhe) {
       throw new Error("Tarefa atualizada, mas não foi possível recarregar o detalhe.");
@@ -274,15 +513,40 @@ export class TarefasService {
     return detalhe;
   }
 
-  async excluir(input: ExcluirInput): Promise<void> {
-    const { error } = await this.supabase.from("tarefas").delete().eq("id", input.id);
+  async excluir(
+    input: ExcluirInput,
+    contextoUsuario?: ContextoUsuarioTarefas,
+  ): Promise<void> {
+    if (contextoUsuario) {
+      const tarefa = await this.buscarPorId(input.id, contextoUsuario);
+
+      if (!tarefa) {
+        throw new Error("Tarefa não encontrada ou sem permissão de acesso.");
+      }
+    }
+
+    const { error } = await this.supabase
+      .from("tarefas")
+      .delete()
+      .eq("id", input.id);
 
     if (error) {
       throw new Error(error.message || "Não foi possível excluir a tarefa.");
     }
   }
 
-  async moverStatus(input: MoverStatusInput): Promise<TarefaDetalhe> {
+  async moverStatus(
+    input: MoverStatusInput,
+    contextoUsuario?: ContextoUsuarioTarefas,
+  ): Promise<TarefaDetalhe> {
+    if (contextoUsuario) {
+      const tarefa = await this.buscarPorId(input.id, contextoUsuario);
+
+      if (!tarefa) {
+        throw new Error("Tarefa não encontrada ou sem permissão de acesso.");
+      }
+    }
+
     const usuarioId = await this.buscarUsuarioAtualId();
 
     const { error } = await this.supabase
@@ -299,7 +563,7 @@ export class TarefasService {
       );
     }
 
-    const detalhe = await this.buscarPorId(input.id);
+    const detalhe = await this.buscarPorId(input.id, contextoUsuario);
 
     if (!detalhe) {
       throw new Error("Status atualizado, mas não foi possível recarregar a tarefa.");
@@ -308,7 +572,18 @@ export class TarefasService {
     return detalhe;
   }
 
-  async reabrir(input: ReabrirTarefaInput): Promise<TarefaDetalhe> {
+  async reabrir(
+    input: ReabrirTarefaInput,
+    contextoUsuario?: ContextoUsuarioTarefas,
+  ): Promise<TarefaDetalhe> {
+    if (contextoUsuario) {
+      const tarefa = await this.buscarPorId(input.id, contextoUsuario);
+
+      if (!tarefa) {
+        throw new Error("Tarefa não encontrada ou sem permissão de acesso.");
+      }
+    }
+
     const usuarioId = await this.buscarUsuarioAtualId();
 
     const { error } = await this.supabase
@@ -324,7 +599,7 @@ export class TarefasService {
       throw new Error(error.message || "Não foi possível reabrir a tarefa.");
     }
 
-    const detalhe = await this.buscarPorId(input.id);
+    const detalhe = await this.buscarPorId(input.id, contextoUsuario);
 
     if (!detalhe) {
       throw new Error("Tarefa reaberta, mas não foi possível recarregar o detalhe.");

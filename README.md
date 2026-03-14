@@ -9,4 +9,4 @@ Abrir [http://localhost:3000](http://localhost:3000) no navegador.
 supabase start
 
 # Executar automacao:
-node scripts/bootstrap-local-admin.cjs
+node scripts/seed.js

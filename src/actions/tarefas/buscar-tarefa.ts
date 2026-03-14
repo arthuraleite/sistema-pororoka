@@ -22,7 +22,36 @@ export async function buscarTarefa(
     const supabase = await criarClienteSupabaseServidor();
     const service = new TarefasService(supabase);
 
-    const data = await service.buscarPorId(parsed.tarefaId);
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user?.id) {
+      return {
+        sucesso: false,
+        mensagem: "Não foi possível identificar o usuário autenticado.",
+      };
+    }
+
+    const { data: usuarioAtual, error: usuarioError } = await supabase
+      .from("usuarios")
+      .select("id, perfil, equipe_id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (usuarioError || !usuarioAtual) {
+      return {
+        sucesso: false,
+        mensagem: "Não foi possível carregar o contexto do usuário.",
+      };
+    }
+
+    const data = await service.buscarPorId(parsed.tarefaId, {
+      usuarioId: usuarioAtual.id,
+      perfil: usuarioAtual.perfil,
+      equipeId: usuarioAtual.equipe_id,
+    });
 
     if (!data) {
       return {

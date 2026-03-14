@@ -21,6 +21,36 @@ export async function listarTarefas(
     const supabase = await criarClienteSupabaseServidor();
     const service = new TarefasService(supabase);
 
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user?.id) {
+      return {
+        sucesso: false,
+        mensagem: "Não foi possível identificar o usuário autenticado.",
+      };
+    }
+
+    const { data: usuarioAtual, error: usuarioError } = await supabase
+      .from("usuarios")
+      .select("id, perfil, equipe_id")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
+
+    if (usuarioError || !usuarioAtual) {
+      return {
+        sucesso: false,
+        mensagem: "Não foi possível carregar o contexto do usuário.",
+      };
+    }
+
+    const responsavelIds =
+      input?.responsavelIds && input.responsavelIds.length > 0
+        ? input.responsavelIds
+        : [usuarioAtual.id];
+
     const data = await service.listar({
       filtros: {
         busca: input?.busca,
@@ -28,7 +58,7 @@ export async function listarTarefas(
         prioridades: input?.prioridades,
         categoriaIds: input?.categoriaIds,
         equipeIds: input?.equipeIds,
-        responsavelIds: input?.responsavelIds,
+        responsavelIds,
         dataInicio: input?.dataInicio,
         dataFim: input?.dataFim,
         ocultarConcluidas: input?.ocultarConcluidas,
@@ -38,6 +68,11 @@ export async function listarTarefas(
       },
       pagina: input?.pagina ?? 1,
       limite: input?.limite ?? 50,
+      contextoUsuario: {
+        usuarioId: usuarioAtual.id,
+        perfil: usuarioAtual.perfil,
+        equipeId: usuarioAtual.equipe_id,
+      },
     });
 
     return {
@@ -45,7 +80,7 @@ export async function listarTarefas(
       mensagem: "Tarefas listadas com sucesso.",
       data,
     };
- } catch (error) {
+  } catch (error) {
     console.error("Erro bruto em listarTarefas:", error);
     console.error(
       "Erro serializado em listarTarefas:",
