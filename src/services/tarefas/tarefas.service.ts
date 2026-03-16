@@ -111,11 +111,15 @@ export class TarefasService {
         return false;
       }
 
-      if (!contexto.equipeId) {
-        return false;
-      }
+      const ehDaMesmaEquipe =
+        contexto.equipeId !== null && item.equipeId === contexto.equipeId;
 
-      return item.equipeId === contexto.equipeId;
+      const ehResponsavel =
+        item.responsaveis?.some(
+          (responsavel) => responsavel.id === contexto.usuarioId,
+        ) ?? false;
+
+      return ehDaMesmaEquipe || ehResponsavel;
     });
 
     return {
@@ -162,11 +166,16 @@ export class TarefasService {
       return null;
     }
 
-    if (!contextoUsuario.equipeId) {
-      return null;
-    }
+    const ehDaMesmaEquipe =
+      contextoUsuario.equipeId !== null &&
+      tarefa.equipeId === contextoUsuario.equipeId;
 
-    return tarefa.equipeId === contextoUsuario.equipeId ? tarefa : null;
+    const ehResponsavel =
+      tarefa.responsaveis?.some(
+        (responsavel) => responsavel.id === contextoUsuario.usuarioId,
+      ) ?? false;
+
+    return ehDaMesmaEquipe || ehResponsavel ? tarefa : null;
   }
 
   private async buscarUsuarioAtualId(): Promise<string> {
@@ -185,7 +194,7 @@ export class TarefasService {
     const { data: usuarioAtual, error: usuarioError } = await this.supabase
       .from("usuarios")
       .select("id, perfil, equipe_id")
-      .eq("auth_user_id", usuarioId)
+      .eq("id", usuarioId)
       .maybeSingle();
 
     if (usuarioError || !usuarioAtual) {
@@ -344,7 +353,7 @@ export class TarefasService {
     const { data: usuarioAtual, error: usuarioError } = await this.supabase
       .from("usuarios")
       .select("id, perfil, equipe_id")
-      .eq("auth_user_id", usuarioId)
+      .eq("id", usuarioId)
       .maybeSingle();
 
     if (usuarioError || !usuarioAtual) {

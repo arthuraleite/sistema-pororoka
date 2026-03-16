@@ -14,10 +14,24 @@ type ListarTarefasInput = TarefasFiltros & {
   limite?: number;
 };
 
+async function atualizarTarefasEmAtraso() {
+  const supabase = await criarClienteSupabaseServidor();
+
+  const { error } = await supabase.rpc("marcar_tarefas_em_atraso_no_acesso");
+
+  if (error) {
+    throw new Error(
+      `Erro ao atualizar tarefas em atraso: ${error.message}`,
+    );
+  }
+}
+
 export async function listarTarefas(
   input?: ListarTarefasInput,
 ): Promise<ResultadoOperacaoTarefa<TarefasPaginadas<Tarefa>>> {
   try {
+    await atualizarTarefasEmAtraso();
+
     const supabase = await criarClienteSupabaseServidor();
     const service = new TarefasService(supabase);
 
@@ -36,7 +50,7 @@ export async function listarTarefas(
     const { data: usuarioAtual, error: usuarioError } = await supabase
       .from("usuarios")
       .select("id, perfil, equipe_id")
-      .eq("auth_user_id", user.id)
+      .eq("id", user.id)
       .maybeSingle();
 
     if (usuarioError || !usuarioAtual) {
@@ -82,15 +96,21 @@ export async function listarTarefas(
     };
   } catch (error) {
     console.error("Erro bruto em listarTarefas:", error);
-    console.error(
-      "Erro serializado em listarTarefas:",
-      JSON.stringify(error, null, 2),
-    );
 
     const mensagem =
-      typeof error === "object" && error !== null
-        ? JSON.stringify(error)
-        : String(error);
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : JSON.stringify(error, null, 2);
+
+    const stack =
+      error instanceof Error && error.stack ? error.stack : null;
+
+    console.error("Mensagem em listarTarefas:", mensagem);
+    if (stack) {
+      console.error("Stack em listarTarefas:", stack);
+    }
 
     return {
       sucesso: false,

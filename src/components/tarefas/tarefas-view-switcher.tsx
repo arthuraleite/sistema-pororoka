@@ -10,7 +10,7 @@ type Props = {
 const options: Array<{ value: ViewMode; label: string }> = [
   { value: "kanban", label: "Kanban" },
   { value: "table", label: "Tabela" },
-  { value: "week", label: "Semana" },
+  { value: "week", label: "Calendário" },
 ];
 
 export function TarefasViewSwitcher({ value, onChange }: Props) {

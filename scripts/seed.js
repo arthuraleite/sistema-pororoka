@@ -21,7 +21,7 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const SENHA_PADRAO = "1234";
-const PREFIXO_SEED = "[SEED POROROKA 2026]";
+const PREFIXO_SEED = "";
 
 const EQUIPES = [
   {

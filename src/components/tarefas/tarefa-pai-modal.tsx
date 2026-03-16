@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
 import { TarefaChecklistFilhas } from "@/components/tarefas/tarefa-checklist-filhas";
 import { TarefaComentariosPanel } from "@/components/tarefas/tarefa-comentarios-panel";
 import { TarefaFormBase } from "@/components/tarefas/tarefa-form-base";
@@ -60,6 +62,8 @@ type Props = {
   onExcluirComentario?: (comentarioId: string) => void | Promise<void>;
 };
 
+type PainelLateral = "filhas" | "comentarios";
+
 function tituloModal(mode: Props["mode"]) {
   if (mode === "create") return "Novo objetivo";
   if (mode === "edit") return "Editar objetivo";
@@ -68,6 +72,61 @@ function tituloModal(mode: Props["mode"]) {
 
 function formatarStatus(status: string) {
   return status.replaceAll("_", " ");
+}
+
+function getStatusClassName(status: StatusTarefa) {
+  if (status === "concluida") return "status-success";
+  if (status === "em_atraso") return "status-danger";
+  if (status === "atencao") return "status-warning";
+  if (status === "em_andamento") return "status-info";
+  return "status-neutral";
+}
+
+function PainelAcordeao({
+  id,
+  titulo,
+  aberto,
+  onToggle,
+  contador,
+  children,
+}: {
+  id: PainelLateral;
+  titulo: string;
+  aberto: boolean;
+  onToggle: (id: PainelLateral) => void;
+  contador?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="panel-theme overflow-hidden rounded-[24px]">
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left interactive-surface"
+        style={{ borderBottom: aberto ? "1px solid var(--border)" : "1px solid transparent" }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="truncate text-sm font-semibold text-[var(--text-1)]">
+            {titulo}
+          </h3>
+
+          {typeof contador === "number" ? (
+            <span
+              className="badge-neutral inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-medium"
+            >
+              {contador}
+            </span>
+          ) : null}
+        </div>
+
+        <span className="shrink-0 text-xs text-[var(--text-4)]">
+          {aberto ? "▴" : "▾"}
+        </span>
+      </button>
+
+      {aberto ? <div className="p-4">{children}</div> : null}
+    </section>
+  );
 }
 
 export function TarefaPaiModal({
@@ -90,102 +149,161 @@ export function TarefaPaiModal({
   onEditarComentario,
   onExcluirComentario,
 }: Props) {
+  const [painelAberto, setPainelAberto] = useState<PainelLateral>("filhas");
+
+  const tituloCabecalho = useMemo(() => {
+    if (mode === "create") return "Novo objetivo";
+    return tarefa?.titulo?.trim() || tituloModal(mode);
+  }, [mode, tarefa?.titulo]);
+
+  const subtituloCabecalho = useMemo(() => {
+    if (mode === "create") {
+      return "Estruture um objetivo e defina responsáveis, prazo e contexto de execução.";
+    }
+
+    return "Acompanhe o objetivo, suas tarefas filhas e a conversa associada.";
+  }, [mode]);
+
   if (!open) return null;
 
+  const mostrarLateral = mode !== "create" && !!tarefa;
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950/80 p-4 backdrop-blur-sm">
-      <div className="flex min-h-full items-start justify-center py-4">
-        <div className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 shadow-2xl">
-          <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
-            <div>
-              <h2 className="text-lg font-semibold text-zinc-100">
-                {tituloModal(mode)}
+    <div className="overlay-backdrop fixed inset-0 z-50 overflow-y-auto p-3 md:p-5">
+      <div className="flex min-h-full items-start justify-center">
+        <div
+          className="panel-theme flex w-full max-w-[1600px] flex-col overflow-hidden rounded-[28px]"
+          style={{
+            minHeight: "min(880px, calc(100vh - 24px))",
+            maxHeight: "calc(100vh - 24px)",
+          }}
+        >
+          <header
+            className="flex flex-wrap items-start justify-between gap-4 px-5 py-5 md:px-6"
+            style={{ borderBottom: "1px solid var(--border)" }}
+          >
+            <div className="min-w-0">
+              <h2 className="truncate text-xl font-semibold text-[var(--text-1)] md:text-2xl">
+                {tituloCabecalho}
               </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Objetivo com acompanhamento das tarefas-filhas vinculadas.
+              <p className="mt-1 max-w-3xl text-sm text-[var(--text-3)]">
+                {subtituloCabecalho}
               </p>
+
+              {tarefa && mode !== "create" ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${getStatusClassName(
+                      tarefa.status,
+                    )}`}
+                  >
+                    {formatarStatus(tarefa.status)}
+                  </span>
+
+                  {tarefa.prioridade ? (
+                    <span className="badge-neutral inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium">
+                      Prioridade {tarefa.prioridade}
+                    </span>
+                  ) : null}
+
+                  {tarefa.dataEntrega ? (
+                    <span className="badge-neutral inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium">
+                      Prazo {tarefa.dataEntrega}
+                      {tarefa.horaEntrega ? ` às ${tarefa.horaEntrega.slice(0, 5)}` : ""}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
-            <div className="flex items-center gap-3">
-              {mode !== "create" ? (
-                <button
-                  type="button"
-                  onClick={onAddFilha}
-                  className="rounded-xl border border-zinc-700 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
-                >
-                  Adicionar filha
-                </button>
-              ) : null}
-
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
+                className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
               >
                 Fechar
               </button>
             </div>
-          </div>
+          </header>
 
           {tarefa && mode !== "create" ? (
-            <div className="flex flex-wrap gap-2 border-b border-zinc-800 px-6 py-3">
+            <div
+              className="flex flex-wrap gap-2 px-5 py-4 md:px-6"
+              style={{ borderBottom: "1px solid var(--border)" }}
+            >
               {mode === "view" ? (
                 <button
                   type="button"
                   onClick={onEditRequest}
-                  className="rounded-xl border border-zinc-700 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
+                  className="button-primary inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
                 >
-                  Editar
+                  Editar objetivo
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={onViewRequest}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
+                  className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
                 >
                   Voltar para visualização
                 </button>
               )}
 
+              {onAddFilha ? (
+                <button
+                  type="button"
+                  onClick={onAddFilha}
+                  className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                >
+                  Nova tarefa filha
+                </button>
+              ) : null}
+
               {tarefa.status !== "concluida" ? (
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    ["a_fazer", "em_andamento", "atencao", "em_pausa"] as const
-                  )
+                <>
+                  {(["a_fazer", "em_andamento", "atencao", "em_pausa"] as const)
                     .filter((status) => status !== tarefa.status)
                     .map((status) => (
                       <button
                         key={status}
                         type="button"
                         onClick={() => onAtualizarStatus?.(status)}
-                        className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
+                        className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
                       >
                         Marcar {formatarStatus(status)}
                       </button>
                     ))}
-                </div>
+                </>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    ["a_fazer", "em_andamento", "atencao", "em_pausa"] as const
-                  ).map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => onReabrir?.(status)}
-                      className="rounded-xl border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm text-amber-200 transition hover:bg-amber-950/60"
-                    >
-                      Reabrir em {formatarStatus(status)}
-                    </button>
-                  ))}
-                </div>
+                <>
+                  {(["a_fazer", "em_andamento", "atencao", "em_pausa"] as const).map(
+                    (status) => (
+                      <button
+                        key={status}
+                        type="button"
+                        onClick={() => onReabrir?.(status)}
+                        className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                      >
+                        Reabrir em {formatarStatus(status)}
+                      </button>
+                    ),
+                  )}
+                </>
               )}
             </div>
           ) : null}
 
-          <div className="min-h-0 grid flex-1 gap-0 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-            <div className="min-h-0 overflow-y-auto border-b border-zinc-800 px-6 py-6 xl:border-b-0 xl:border-r">
-              <div className="space-y-6">
+          <div
+            className={[
+              "min-h-0 flex-1",
+              mostrarLateral
+                ? "grid xl:grid-cols-[minmax(0,1fr)_420px]"
+                : "block",
+            ].join(" ")}
+          >
+            <main className="min-h-0 overflow-y-auto px-5 py-5 md:px-6 md:py-6">
+              <div className="mx-auto max-w-[1120px]">
                 <TarefaFormBase
                   mode={mode}
                   tipo="pai"
@@ -209,9 +327,7 @@ export function TarefaPaiModal({
                           status: tarefa.status,
                           dataEntrega: tarefa.dataEntrega,
                           horaEntrega: tarefa.horaEntrega,
-                          responsavelIds: tarefa.responsaveis.map(
-                            (item) => item.id,
-                          ),
+                          responsavelIds: tarefa.responsaveis.map((item) => item.id),
                           links: tarefa.links,
                         }
                       : undefined
@@ -223,7 +339,9 @@ export function TarefaPaiModal({
                       ...values,
                       tipo: "pai",
                       escopoObjetivo:
-                        values.escopoObjetivo === null ? undefined : values.escopoObjetivo,
+                        values.escopoObjetivo === null
+                          ? undefined
+                          : values.escopoObjetivo,
                     });
                   }}
                   submitLabel={
@@ -234,27 +352,48 @@ export function TarefaPaiModal({
                         : "Fechar"
                   }
                 />
-
-                {tarefa ? (
-                  <TarefaComentariosPanel
-                    comentarios={tarefa.comentarios}
-                    usuarioAtualId={usuarioAtualId}
-                    podeModerar={podeModerarComentarios}
-                    onAdicionar={onAdicionarComentario}
-                    onEditar={onEditarComentario}
-                    onExcluir={onExcluirComentario}
-                    disabled={mode === "create"}
-                  />
-                ) : null}
               </div>
-            </div>
+            </main>
 
-            <aside className="min-h-0 overflow-y-auto px-6 py-6">
-              <TarefaChecklistFilhas
-                titulo="Checklist das filhas"
-                itens={tarefa?.filhas ?? []}
-              />
-            </aside>
+            {mostrarLateral ? (
+              <aside
+                className="min-h-0 overflow-y-auto px-5 py-5 md:px-6 md:py-6"
+                style={{ borderLeft: "1px solid var(--border)" }}
+              >
+                <div className="space-y-4">
+                  <PainelAcordeao
+                    id="filhas"
+                    titulo="Tarefas filhas"
+                    contador={tarefa?.filhas?.length ?? 0}
+                    aberto={painelAberto === "filhas"}
+                    onToggle={setPainelAberto}
+                  >
+                    <TarefaChecklistFilhas
+                      titulo="Checklist das filhas"
+                      itens={tarefa?.filhas ?? []}
+                    />
+                  </PainelAcordeao>
+
+                  <PainelAcordeao
+                    id="comentarios"
+                    titulo="Comentários"
+                    contador={tarefa?.comentarios?.length ?? 0}
+                    aberto={painelAberto === "comentarios"}
+                    onToggle={setPainelAberto}
+                  >
+                    <TarefaComentariosPanel
+                      comentarios={tarefa?.comentarios ?? []}
+                      usuarioAtualId={usuarioAtualId}
+                      podeModerar={podeModerarComentarios}
+                      onAdicionar={onAdicionarComentario}
+                      onEditar={onEditarComentario}
+                      onExcluir={onExcluirComentario}
+                      disabled={mode === "create"}
+                    />
+                  </PainelAcordeao>
+                </div>
+              </aside>
+            ) : null}
           </div>
         </div>
       </div>

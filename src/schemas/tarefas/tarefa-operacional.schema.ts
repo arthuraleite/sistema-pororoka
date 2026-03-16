@@ -128,6 +128,7 @@ export const moverTarefaStatusSchema = z.object({
     "a_fazer",
     "em_andamento",
     "atencao",
+    "em_atraso",
     "em_pausa",
     "concluida",
   ]),

@@ -1,10 +1,12 @@
 "use client";
 
+import { useRef } from "react";
 import { TarefaCard } from "@/components/tarefas/tarefa-card";
 import type { TarefaKanbanCard } from "@/types/tarefas/tarefas.types";
 
 type Props = {
   cards: TarefaKanbanCard[];
+  ordenacao?: "alfabetica" | "prioridade" | "status" | "data_entrega";
   onOpenTask?: (taskId: string) => void;
   showEquipeBadge?: boolean;
   hideTipoBadge?: boolean;
@@ -25,35 +27,116 @@ const colunas = [
 
 function classeCabecalhoColuna(status: TarefaKanbanCard["status"]) {
   switch (status) {
-    case "a_fazer":
-      return "border-slate-800 bg-slate-950/40 text-slate-200";
     case "em_andamento":
-      return "border-sky-800 bg-sky-950/40 text-sky-200";
+      return "kanban-header-info";
     case "atencao":
-      return "border-amber-800 bg-amber-950/40 text-amber-200";
+      return "kanban-header-warning";
     case "em_pausa":
-      return "border-violet-800 bg-violet-950/40 text-violet-200";
+      return "kanban-header-paused";
     case "em_atraso":
-      return "border-red-800 bg-red-950/40 text-red-200";
+      return "kanban-header-danger";
     case "concluida":
-      return "border-emerald-800 bg-emerald-950/40 text-emerald-200";
+      return "kanban-header-success";
+    case "a_fazer":
     default:
-      return "border-zinc-800 bg-zinc-950 text-zinc-200";
+      return "kanban-header-neutral";
   }
+}
+
+function ordenarCardsColuna(
+  cards: TarefaKanbanCard[],
+  ordenacao: "alfabetica" | "prioridade" | "status" | "data_entrega",
+) {
+  const prioridadePeso = (prioridade: TarefaKanbanCard["prioridade"]) => {
+    switch (prioridade) {
+      case "urgente":
+        return 0;
+      case "alta":
+        return 1;
+      case "media":
+        return 2;
+      case "baixa":
+        return 3;
+      default:
+        return 4;
+    }
+  };
+
+  const prazoTimestamp = (prazo: string, horaEntrega?: string | null) => {
+    return new Date(
+      horaEntrega ? `${prazo}T${horaEntrega}:00` : `${prazo}T23:59:59`,
+    ).getTime();
+  };
+
+  return [...cards].sort((a, b) => {
+    if (a.emAtraso && !b.emAtraso) return -1;
+    if (!a.emAtraso && b.emAtraso) return 1;
+
+    switch (ordenacao) {
+      case "alfabetica":
+        return a.titulo.localeCompare(b.titulo);
+
+      case "prioridade": {
+        const prioridade =
+          prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
+        if (prioridade !== 0) return prioridade;
+        return prazoTimestamp(a.prazo, a.horaEntrega) - prazoTimestamp(b.prazo, b.horaEntrega);
+      }
+
+      case "status":
+        return a.status.localeCompare(b.status);
+
+      case "data_entrega":
+      default: {
+        const prazo =
+          prazoTimestamp(a.prazo, a.horaEntrega) -
+          prazoTimestamp(b.prazo, b.horaEntrega);
+        if (prazo !== 0) return prazo;
+
+        const prioridade =
+          prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
+        if (prioridade !== 0) return prioridade;
+
+        return a.titulo.localeCompare(b.titulo);
+      }
+    }
+  });
 }
 
 export function TarefasKanban({
   cards,
+  ordenacao = "data_entrega",
   onOpenTask,
   hideTipoBadge = false,
   showEquipeBadge = false,
   onMoveTask,
 }: Props) {
+  const scrollRef = useRef<HTMLElement | null>(null);
   return (
-    <section className="overflow-x-auto">
-      <div className="grid min-w-[1650px] grid-cols-6 gap-4">
+    <section
+      ref={scrollRef}
+      className="overflow-x-auto"
+      onDragOver={(event) => {
+        const container = scrollRef.current;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const threshold = 80;
+        const scrollStep = 24;
+
+        if (event.clientX < rect.left + threshold) {
+          container.scrollLeft -= scrollStep;
+        } else if (event.clientX > rect.right - threshold) {
+          container.scrollLeft += scrollStep;
+        }
+      }}
+    >
+      <div className="grid min-w-[1860px] grid-cols-6 gap-4">
         {colunas.map((coluna) => {
-          const cardsColuna = cards.filter((card) => card.status === coluna.status);
+          const cardsColuna = ordenarCardsColuna(
+            cards.filter((card) => card.status === coluna.status),
+            ordenacao,
+          );
 
           return (
             <div
@@ -69,46 +152,27 @@ export function TarefasKanban({
 
                 await onMoveTask(cardId, coluna.status);
               }}
-              className="rounded-3xl p-4"
-              style={{
-                border: "1px solid var(--border)",
-                backgroundColor: "var(--surface-1)",
-              }}
-            >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div
-                  className={[
-                    "inline-flex items-center rounded-xl border px-3 py-2",
-                    classeCabecalhoColuna(coluna.status),
-                  ].join(" ")}
-                >
-                  <h2 className="text-sm font-semibold uppercase tracking-wide">
-                    {coluna.titulo}
-                  </h2>
+              className="surface-1 flex h-[calc(100vh-260px)] min-h-[520px] flex-col rounded-3xl px-5 pb-5 pt-4">
+                <div className="mb-4 -mx-5 -mt-4">
+                  <div
+                    className={[
+                      "flex min-h-[35px] w-full items-center justify-between rounded-t-3xl px-5 py-4",
+                      classeCabecalhoColuna(coluna.status),
+                    ].join(" ")}
+                  >
+                    <h2 className="text-sm font-semibold uppercase tracking-[0.14em]">
+                      {coluna.titulo}
+                    </h2>
+
+                    <span className="kanban-header-count inline-flex min-w-8 items-center justify-center rounded-full px-2.5 py-1 text-xs font-semibold">
+                      {cardsColuna.length}
+                    </span>
+                  </div>
                 </div>
 
-                <span
-                  className="rounded-full px-2.5 py-1 text-xs"
-                  style={{
-                    border: "1px solid var(--border)",
-                    backgroundColor: "var(--surface-0)",
-                    color: "var(--text-3)",
-                  }}
-                >
-                  {cardsColuna.length}
-                </span>
-              </div>
-
-              <div className="space-y-3">
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
                 {cardsColuna.length === 0 ? (
-                  <div
-                    className="rounded-2xl p-4 text-sm"
-                    style={{
-                      border: "1px dashed var(--border)",
-                      backgroundColor: "var(--surface-0)",
-                      color: "var(--text-3)",
-                    }}
-                  >
+                  <div className="surface-0 rounded-2xl p-4 text-sm text-[var(--text-3)]">
                     Nenhuma tarefa nesta coluna.
                   </div>
                 ) : null}
@@ -130,6 +194,7 @@ export function TarefasKanban({
                       horaEntrega={card.horaEntrega}
                       categoria={card.categoria ?? null}
                       equipe={card.equipe ?? null}
+                      objetivoTitulo={card.objetivoTitulo ?? null}
                       responsaveis={card.responsaveis ?? []}
                       emAtraso={card.emAtraso}
                       showStatus={false}

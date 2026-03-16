@@ -467,6 +467,40 @@ begin
 end;
 $$;
 
+create or replace function public.marcar_tarefas_em_atraso_no_acesso()
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_total integer;
+begin
+  update public.tarefas
+     set status = 'em_atraso'::public.status_tarefa,
+         data_atualizacao = now()
+   where status in (
+     'a_fazer'::public.status_tarefa,
+     'em_andamento'::public.status_tarefa,
+     'atencao'::public.status_tarefa
+   )
+     and (
+       (
+         hora_entrega is not null
+         and now() >= (data_entrega::timestamp + hora_entrega)
+       )
+       or
+       (
+         hora_entrega is null
+         and now() >= (data_entrega::timestamp + time '23:59:59')
+       )
+     );
+
+  get diagnostics v_total = row_count;
+  return v_total;
+end;
+$$;
+
 create or replace function public.usuario_atual_eh_configurador()
 returns boolean
 language sql
@@ -983,17 +1017,11 @@ alter table public.tarefas_notificacoes enable row level security;
 -- POLICIES - USUÁRIOS, EQUIPES E AUDITORIA
 -- =========================================================
 
-create policy "usuarios_podem_ler_proprio_registro"
+create policy "usuarios_ativos_podem_ler_usuarios"
 on public.usuarios
 for select
 to authenticated
-using (auth.uid() = id);
-
-create policy "configuradores_podem_ler_todos_usuarios"
-on public.usuarios
-for select
-to authenticated
-using (public.usuario_atual_eh_configurador());
+using (public.fn_usuario_ativo());
 
 create policy "configuradores_podem_inserir_usuarios"
 on public.usuarios

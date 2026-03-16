@@ -46,10 +46,20 @@ type CategoriaRow =
     }>
   | null;
 
-type UsuarioResponsavelListagemRow = {
-  id: string;
-  nome: string;
-  avatar_url?: string | null;
+type ResponsavelPorTarefaRow = {
+  tarefa_id: string;
+  usuario:
+    | {
+        id: string;
+        nome: string;
+        avatar_url?: string | null;
+      }
+    | Array<{
+        id: string;
+        nome: string;
+        avatar_url?: string | null;
+      }>
+    | null;
 };
 
 type UsuarioDetalheRow =
@@ -135,7 +145,7 @@ type TarefaComentarioRow = {
 };
 
 type TarefaResponsavelListagemRelRow = {
-  usuario?: UsuarioResponsavelListagemRow | null;
+  usuario_id?: string;
 };
 
 type TarefaResponsavelDetalheRelRow = {
@@ -186,27 +196,6 @@ type TarefaRowDetalhe = Omit<TarefaRow, "responsaveis_rel"> & {
 function firstOrNull<T>(value: T | T[] | null | undefined): T | null {
   if (!value) return null;
   return Array.isArray(value) ? (value[0] ?? null) : value;
-}
-
-function mapResponsaveis(
-  rows: TarefaRow["responsaveis_rel"],
-): TarefaResponsavelResumo[] {
-  return (rows ?? [])
-    .map((item) => item.usuario)
-    .filter(
-      (
-        usuario,
-      ): usuario is {
-        id: string;
-        nome: string;
-        avatar_url?: string | null;
-      } => Boolean(usuario),
-    )
-    .map((usuario) => ({
-      id: usuario.id,
-      nome: usuario.nome,
-      avatarUrl: usuario.avatar_url ?? null,
-    }));
 }
 
 function mapFilhas(rows: FilhaRow[] | null | undefined): TarefaChecklistItem[] {
@@ -314,7 +303,10 @@ function mapComentarios(
   return raiz;
 }
 
-function mapTarefaRow(row: TarefaRow): Tarefa {
+function mapTarefaRow(
+  row: TarefaRow,
+  responsaveisMap?: Map<string, TarefaResponsavelResumo[]>,
+): Tarefa {
   const equipe = firstOrNull(row.equipe ?? null);
   const categoria = firstOrNull(row.categoria ?? null);
 
@@ -346,7 +338,7 @@ function mapTarefaRow(row: TarefaRow): Tarefa {
       atualizadoPorId: row.atualizado_por_id,
       dataCriacao: row.data_criacao,
       dataAtualizacao: row.data_atualizacao,
-      responsaveis: mapResponsaveis(row.responsaveis_rel),
+      responsaveis: responsaveisMap?.get(row.id) ?? [],
       filhas: [],
     };
   }
@@ -385,7 +377,7 @@ function mapTarefaRow(row: TarefaRow): Tarefa {
           ativo: categoria.ativo,
         }
       : null,
-    responsaveis: mapResponsaveis(row.responsaveis_rel),
+    responsaveis: responsaveisMap?.get(row.id) ?? [],
     filhas: undefined,
   } as Tarefa;
 }
@@ -580,6 +572,27 @@ function applyOrdenacaoPadrao(query: QueryLike): QueryLike {
     .order("data_criacao", { ascending: false });
 }
 
+function agruparResponsaveisPorTarefa(
+  rows: ResponsavelPorTarefaRow[] | null | undefined,
+): Map<string, TarefaResponsavelResumo[]> {
+  const mapa = new Map<string, TarefaResponsavelResumo[]>();
+
+  for (const row of rows ?? []) {
+    const usuario = firstOrNull(row.usuario ?? null);
+    if (!usuario) continue;
+
+    const atual = mapa.get(row.tarefa_id) ?? [];
+    atual.push({
+      id: usuario.id,
+      nome: usuario.nome,
+      avatarUrl: usuario.avatar_url ?? null,
+    });
+    mapa.set(row.tarefa_id, atual);
+  }
+
+  return mapa;
+}
+
 export class TarefasRepository {
   constructor(private readonly supabase: ClienteSupabase) {}
 
@@ -620,11 +633,7 @@ export class TarefasRepository {
           ativo
         ),
         responsaveis_rel:tarefas_responsaveis (
-          usuario:usuarios!fk_tarefas_responsaveis_usuario (
-            id,
-            nome,
-            avatar_url
-          )
+          usuario_id
         )
       `,
       { count: "exact" },
@@ -646,7 +655,36 @@ export class TarefasRepository {
     }
 
     const rows = (data ?? []) as unknown as TarefaRow[];
-    const itens = rows.map(mapTarefaRow);
+    const tarefaIds = rows.map((row) => row.id);
+
+    let responsaveisMap = new Map<string, TarefaResponsavelResumo[]>();
+
+    if (tarefaIds.length > 0) {
+      const { data: responsaveisData, error: responsaveisError } =
+        await this.supabase
+          .from("tarefas_responsaveis")
+          .select(
+            `
+              tarefa_id,
+              usuario:usuarios!fk_tarefas_responsaveis_usuario (
+                id,
+                nome,
+                avatar_url
+              )
+            `,
+          )
+          .in("tarefa_id", tarefaIds);
+
+      if (responsaveisError) {
+        throw responsaveisError;
+      }
+
+      responsaveisMap = agruparResponsaveisPorTarefa(
+        (responsaveisData ?? []) as ResponsavelPorTarefaRow[],
+      );
+    }
+
+    const itens = rows.map((row) => mapTarefaRow(row, responsaveisMap));
 
     return {
       itens,

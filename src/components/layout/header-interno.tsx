@@ -55,7 +55,7 @@ export function HeaderInterno({
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
         <div>
           <h1 className="header-title text-lg font-semibold">
-            Sistema Pororoka
+            Sistema Interno de Gestão da Pororoka
           </h1>
         </div>
 

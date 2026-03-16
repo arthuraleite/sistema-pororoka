@@ -41,45 +41,45 @@ type Props = {
 function prioridadeClasse(prioridade: string | null) {
   switch (prioridade) {
     case "urgente":
-      return "border-red-800 bg-red-950/40 text-red-200";
+      return "status-danger";
     case "alta":
-      return "border-amber-800 bg-amber-950/40 text-amber-200";
+      return "status-warning";
     case "media":
-      return "border-sky-800 bg-sky-950/40 text-sky-200";
+      return "status-info";
     case "baixa":
-      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+      return "status-neutral";
     default:
-      return "border-zinc-700 bg-zinc-900 text-zinc-400";
+      return "status-neutral";
   }
 }
 
 function statusClasse(status: string) {
   switch (status) {
     case "em_atraso":
-      return "border-red-800 bg-red-950/40 text-red-200";
+      return "status-danger";
     case "atencao":
-      return "border-amber-800 bg-amber-950/40 text-amber-200";
+      return "status-warning";
     case "concluida":
-      return "border-emerald-800 bg-emerald-950/40 text-emerald-200";
+      return "status-success";
     case "em_andamento":
-      return "border-sky-800 bg-sky-950/40 text-sky-200";
+      return "status-info";
     case "em_pausa":
-      return "border-violet-800 bg-violet-950/40 text-violet-200";
+      return "status-paused";
     default:
-      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+      return "status-neutral";
   }
 }
 
 function tipoClasse(tipo: "pai" | "filha" | "orfa" | undefined) {
   switch (tipo) {
     case "pai":
-      return "border-violet-800/60 bg-violet-950/40 text-violet-200";
+      return "status-info";
     case "filha":
-      return "border-sky-800/60 bg-sky-950/40 text-sky-200";
+      return "status-info";
     case "orfa":
-      return "border-emerald-800/60 bg-emerald-950/40 text-emerald-200";
+      return "status-success";
     default:
-      return "border-zinc-700 bg-zinc-900 text-zinc-300";
+      return "badge-neutral";
   }
 }
 
@@ -147,7 +147,6 @@ export function TarefaCard({
   showEquipeBadge = false,
 }: Props) {
   const Wrapper = onClick ? "button" : "article";
-
   return (
     <Wrapper
       {...(onClick
@@ -159,11 +158,11 @@ export function TarefaCard({
       className={[
         "group w-full rounded-[24px] text-left transition",
         compact ? "p-3.5" : "p-4",
-        onClick ? "hover:-translate-y-[1px]" : "",
+        onClick ? "interactive-surface hover:-translate-y-[1px]" : "",
       ].join(" ")}
       style={{
         backgroundColor: "var(--surface-2)",
-        border: `1px solid ${emAtraso ? "#6b2328" : "var(--border)"}`,
+        border: `1px solid ${emAtraso ? "var(--button-danger-border)" : "var(--border)"}`,
         boxShadow: "var(--shadow-card)",
       }}
     >
@@ -171,17 +170,25 @@ export function TarefaCard({
         <div className="flex min-w-0 flex-wrap gap-2">
           {!hideTipoBadge ? (
             <span
-              className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-medium ${tipoClasse(
+              className={`inline-flex rounded-lg px-2.5 py-1 text-[11px] font-medium ${tipoClasse(
                 tipo,
               )}`}
             >
               {formatarTipo(tipo)}
             </span>
-          ) : null}
+          ) : (
+            <span
+              className={`inline-flex rounded-lg px-2.5 py-1 text-[11px] font-medium ${prioridadeClasse(
+                prioridade,
+              )}`}
+            >
+              {formatarPrioridade(prioridade)}
+            </span>
+          )}
 
           {showStatus ? (
             <span
-              className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-medium ${statusClasse(
+              className={`inline-flex rounded-lg px-2.5 py-1 text-[11px] font-medium ${statusClasse(
                 status,
               )}`}
             >
@@ -190,13 +197,15 @@ export function TarefaCard({
           ) : null}
         </div>
 
-        <span
-          className={`inline-flex shrink-0 rounded-lg border px-2.5 py-1 text-[11px] font-medium ${prioridadeClasse(
-            prioridade,
-          )}`}
-        >
-          {formatarPrioridade(prioridade)}
-        </span>
+        {!hideTipoBadge ? (
+          <span
+            className={`inline-flex shrink-0 rounded-lg px-2.5 py-1 text-[11px] font-medium ${prioridadeClasse(
+              prioridade,
+            )}`}
+          >
+            {formatarPrioridade(prioridade)}
+          </span>
+        ) : null}
       </div>
 
       <h3 className="mt-4 line-clamp-2 text-[15px] font-semibold leading-6 text-[var(--text-1)]">
@@ -212,48 +221,54 @@ export function TarefaCard({
 
       <div className="mt-4 space-y-3">
         {showEquipeBadge && equipe ? (
-          <div
-            className="rounded-2xl px-3 py-2.5"
-            style={{
-              border: "1px solid var(--border)",
-              backgroundColor: "var(--surface-3)",
-            }}
-          >
-            <span className="block text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]">
+          <div className="surface-3 rounded-2xl px-3 py-2.5">
+            <span className="detail-label block text-[10px] uppercase tracking-[0.14em]">
               Equipe
             </span>
-            <span className="mt-1 block truncate text-sm text-[var(--text-2)]">
+            <span className="detail-value-secondary mt-1 block truncate text-sm">
               {equipe.nome}
             </span>
           </div>
         ) : null}
 
-        <div
-          className="rounded-2xl px-3 py-2.5"
-          style={{
-            border: "1px solid var(--border)",
-            backgroundColor: "var(--surface-3)",
-          }}
-        >
-          <span className="block text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]">
+        <div className="surface-3 rounded-2xl px-3 py-2.5">
+          <span className="detail-label block text-[10px] uppercase tracking-[0.14em]">
             Categoria
           </span>
-          <span className="mt-1 block truncate text-sm text-[var(--text-2)]">
+          <span className="detail-value-secondary mt-1 block truncate text-sm">
             {categoria?.nome ?? "Sem categoria"}
           </span>
         </div>
 
         <div
           className="rounded-2xl px-3 py-2.5"
-          style={{
-            border: "1px solid var(--border)",
-            backgroundColor: "var(--surface-3)",
-          }}
+          style={
+            emAtraso
+              ? {
+                  backgroundColor: "rgba(159, 18, 57, 0.12)",
+                  border: "1px solid rgba(190, 24, 93, 0.28)",
+                }
+              : {
+                  backgroundColor: "var(--surface-3)",
+                  border: "1px solid var(--border)",
+                }
+          }
         >
-          <span className="block text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]">
-            Data de entrega
+          <span
+            className="block text-[10px] uppercase tracking-[0.14em]"
+            style={{
+              color: emAtraso ? "#fda4af" : "var(--text-4)",
+            }}
+          >
+            {emAtraso ? "Prazo em atraso" : "Data de entrega"}
           </span>
-          <span className="mt-1 block text-sm text-[var(--text-2)]">
+
+          <span
+            className="mt-1 block text-sm font-medium"
+            style={{
+              color: emAtraso ? "#ffe4e6" : "var(--text-2)",
+            }}
+          >
             {formatarDataPadrao(prazo)}
             {horaEntrega ? ` às ${horaEntrega}` : ""}
           </span>
@@ -268,11 +283,7 @@ export function TarefaCard({
                 <div
                   key={responsavel.id}
                   title={responsavel.nome}
-                  className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold text-[var(--text-2)]"
-                  style={{
-                    border: "1px solid var(--border)",
-                    backgroundColor: "var(--surface-1)",
-                  }}
+                  className="surface-1 relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full text-[10px] font-semibold text-[var(--text-2)]"
                 >
                   {responsavel.avatarUrl ? (
                     <Image

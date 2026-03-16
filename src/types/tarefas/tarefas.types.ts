@@ -308,6 +308,7 @@ export type TarefasFiltros = {
   equipeIds?: string[];
   responsavelIds?: string[];
   tipo?: "todas" | "pai" | "filha" | "orfa";
+  escopoObjetivo?: string;
   ordenacao?: "alfabetica" | "prioridade" | "status" | "data_entrega";
   dataInicio?: string;
   dataFim?: string;
@@ -347,6 +348,7 @@ export type TarefaCardCategoria = {
 export type TarefaKanbanCard = {
   id: UUID;
   tipo: TipoTarefa;
+  objetivoTitulo?: string | null,
   titulo: string;
   status: StatusTarefa;
   prioridade: PrioridadeTarefa | null;

@@ -14,11 +14,15 @@ import { moverTarefaStatus } from "@/actions/tarefas/mover-tarefa-status";
 import { reabrirTarefa } from "@/actions/tarefas/reabrir-tarefa";
 import { TarefaOperacionalModal } from "@/components/tarefas/tarefa-operacional-modal";
 import { TarefaPaiModal } from "@/components/tarefas/tarefa-pai-modal";
-import { TarefasFilters } from "@/components/tarefas/tarefas-filters";
-import { TarefasKanban } from "@/components/tarefas/tarefas-kanban";
-import { TarefasTable } from "@/components/tarefas/tarefas-table";
-import { TarefasViewSwitcher } from "@/components/tarefas/tarefas-view-switcher";
-import { TarefasWeekCalendar } from "@/components/tarefas/tarefas-week-calendar";
+import { ObjetivosSection } from "@/components/tarefas/objetivos-section";
+import {
+  aplicarFiltrosLocais,
+  detalheParaTarefaBase,
+  mapResponsaveisResumo,
+  prazoTimestamp,
+  prioridadePeso,
+} from "@/components/tarefas/tarefas-page.utils";
+import { TarefasSection } from "@/components/tarefas/tarefas-section";
 import type {
   CategoriaTarefa,
   CriarTarefaInput,
@@ -26,8 +30,6 @@ import type {
   ResultadoOperacaoTarefa,
   StatusTarefa,
   Tarefa,
-  TarefaCalendarioDia,
-  TarefaCalendarioItem,
   TarefaDetalhe,
   TarefaKanbanCard,
   TarefasFiltros,
@@ -95,70 +97,10 @@ type PayloadModalOperacional = {
   links: Array<{ id?: string; url: string; texto?: string | null }>;
 };
 
-function prioridadePeso(prioridade: Tarefa["prioridade"]) {
-  switch (prioridade) {
-    case "urgente":
-      return 0;
-    case "alta":
-      return 1;
-    case "media":
-      return 2;
-    case "baixa":
-      return 3;
-    default:
-      return 4;
-  }
-}
-
-function formatarStatusLabel(status: string) {
-  return status
-    .replaceAll("_", " ")
-    .split(" ")
-    .map((palavra) => palavra.charAt(0).toUpperCase() + palavra.slice(1))
-    .join(" ");
-}
-
-function formatarTipoLabel(tipo: "pai" | "filha" | "orfa") {
-  if (tipo === "pai") return "Objetivo";
-  if (tipo === "filha") return "Tarefa de Objetivo";
-  return "Tarefa";
-}
-
-function corTipoLabel(tipo: "pai" | "filha" | "orfa") {
-  if (tipo === "pai") {
-    return "border-violet-800/60 bg-violet-950/40 text-violet-200";
-  }
-
-  if (tipo === "filha") {
-    return "border-sky-800/60 bg-sky-950/40 text-sky-200";
-  }
-
-  return "border-emerald-800/60 bg-emerald-950/40 text-emerald-200";
-}
-
-function prazoTimestamp(dataEntrega: string, horaEntrega: string | null) {
-  return new Date(
-    horaEntrega ? `${dataEntrega}T${horaEntrega}:00` : `${dataEntrega}T23:59:59`,
-  ).getTime();
-}
-
-function mapResponsaveisResumo(
-  responsaveis:
-    | Array<{
-        id: string;
-        nome: string;
-        avatarUrl?: string | null;
-      }>
-    | undefined,
-) {
-  return (responsaveis ?? []).map((responsavel) => ({
-    id: responsavel.id,
-    nome: responsavel.nome,
-    avatarUrl: responsavel.avatarUrl ?? null,
-  }));
-}
-
-function mapTarefaToKanbanCard(tarefa: Tarefa): TarefaKanbanCard {
+function mapTarefaToKanbanCard(
+  tarefa: Tarefa,
+  objetivosMap: Map<string, string>,
+): TarefaKanbanCard {
   return {
     id: tarefa.id,
     tipo: tarefa.tipo,
@@ -173,231 +115,14 @@ function mapTarefaToKanbanCard(tarefa: Tarefa): TarefaKanbanCard {
             nome: tarefa.categoria.nome,
           },
     equipe: tarefa.tipo === "pai" ? null : tarefa.equipe,
-    prazo: formatarDataPadrao(tarefa.dataEntrega),
+    objetivoTitulo:
+      tarefa.tipo === "filha" && tarefa.tarefaPaiId
+        ? (objetivosMap.get(tarefa.tarefaPaiId) ?? null)
+        : null,
+    prazo: tarefa.dataEntrega,
     horaEntrega: tarefa.horaEntrega,
     responsaveis: mapResponsaveisResumo(tarefa.responsaveis),
     emAtraso: tarefa.status === "em_atraso",
-  };
-}
-
-function calcularResumoObjetivo(
-  objetivoId: string,
-  tarefasBase: Tarefa[],
-) {
-  const filhas = tarefasBase.filter((tarefa) => tarefa.tarefaPaiId === objetivoId);
-  const total = filhas.length;
-  const concluidas = filhas.filter((tarefa) => tarefa.status === "concluida").length;
-  const percentual = total > 0 ? Math.round((concluidas / total) * 100) : 0;
-
-  return {
-    total,
-    concluidas,
-    percentual,
-  };
-}
-
-function organizarSemana(itens: Tarefa[]): TarefaCalendarioDia[] {
-  const mapa = new Map<string, TarefaCalendarioItem[]>();
-
-  for (const tarefa of itens) {
-    const atual = mapa.get(tarefa.dataEntrega) ?? [];
-    atual.push({
-      id: tarefa.id,
-      titulo: tarefa.titulo,
-      dataEntrega: tarefa.dataEntrega,
-      horaEntrega: tarefa.horaEntrega,
-      status: tarefa.status,
-      prioridade: tarefa.prioridade,
-      equipe: tarefa.tipo === "pai" ? null : tarefa.equipe,
-      categoria:
-        tarefa.tipo === "pai" || !tarefa.categoria
-          ? null
-          : {
-              id: tarefa.categoria.id,
-              nome: tarefa.categoria.nome,
-            },
-      responsaveis: mapResponsaveisResumo(tarefa.responsaveis),
-      emAtraso: tarefa.status === "em_atraso",
-    });
-    mapa.set(tarefa.dataEntrega, atual);
-  }
-
-  return Array.from(mapa.entries())
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([data, itensDia]) => ({
-      data,
-      itens: itensDia.sort((a, b) => {
-        if (a.horaEntrega && !b.horaEntrega) return -1;
-        if (!a.horaEntrega && b.horaEntrega) return 1;
-
-        const prioridade =
-          prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
-        if (prioridade !== 0) return prioridade;
-
-        return (
-          prazoTimestamp(a.dataEntrega, a.horaEntrega) -
-          prazoTimestamp(b.dataEntrega, b.horaEntrega)
-        );
-      }),
-    }));
-}
-
-function aplicarFiltrosLocais(
-  itens: Tarefa[],
-  filtros: TarefasFiltros,
-): Tarefa[] {
-  let resultado = [...itens];
-
-  if (filtros.apenasAtrasadas) {
-    resultado = resultado.filter((item) => item.status === "em_atraso");
-  }
-
-  if (filtros.status?.length) {
-    resultado = resultado.filter((item) => filtros.status?.includes(item.status));
-  }
-
-  if (filtros.prioridades?.length) {
-    resultado = resultado.filter(
-      (item) =>
-        item.prioridade !== null &&
-        filtros.prioridades?.includes(item.prioridade),
-    );
-  }
-
-  if (filtros.responsavelIds?.length) {
-  resultado = resultado.filter((item) =>
-    item.responsaveis?.some((responsavel) =>
-      filtros.responsavelIds?.includes(responsavel.id),
-    ),
-  );
-}
-
-  if (filtros.busca?.trim()) {
-    const termo = filtros.busca.trim().toLowerCase();
-
-    resultado = resultado.filter((item) => {
-      const titulo = item.titulo.toLowerCase();
-      const descricao = item.descricao?.toLowerCase() ?? "";
-      const categoria =
-        item.tipo === "pai" ? "" : item.categoria?.nome.toLowerCase() ?? "";
-
-      return (
-        titulo.includes(termo) ||
-        descricao.includes(termo) ||
-        categoria.includes(termo)
-      );
-    });
-  }
-
-  switch (filtros.ordenacao) {
-    case "alfabetica":
-      resultado.sort((a, b) => a.titulo.localeCompare(b.titulo));
-      break;
-    case "prioridade":
-      resultado.sort(
-        (a, b) => prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade),
-      );
-      break;
-    case "status":
-      resultado.sort((a, b) => a.status.localeCompare(b.status));
-      break;
-    case "data_entrega":
-    default:
-      resultado.sort(
-        (a, b) =>
-          prazoTimestamp(a.dataEntrega, a.horaEntrega) -
-          prazoTimestamp(b.dataEntrega, b.horaEntrega),
-      );
-      break;
-  }
-
-  return resultado;
-}
-
-function formatarDataPadrao(data?: string | null) {
-  if (!data) return "Sem prazo";
-
-  const partes = data.split("-");
-  if (partes.length === 3) {
-    const [ano, mes, dia] = partes;
-    return `${dia}/${mes}/${ano}`;
-  }
-
-  const date = new Date(data);
-  if (Number.isNaN(date.getTime())) return data;
-
-  return date.toLocaleDateString("pt-BR");
-}
-
-function detalheParaTarefaBase(detalhe: TarefaDetalhe): Tarefa {
-  if (detalhe.tipo === "pai") {
-    return {
-      id: detalhe.id,
-      tipo: "pai",
-      titulo: detalhe.titulo,
-      descricao: detalhe.descricao,
-      projetoId: detalhe.projetoId,
-      prioridade: detalhe.prioridade,
-      status: detalhe.status,
-      dataEntrega: detalhe.dataEntrega,
-      horaEntrega: detalhe.horaEntrega,
-      dataConclusao: detalhe.dataConclusao,
-      criadoPorId: detalhe.criadoPorId,
-      atualizadoPorId: detalhe.atualizadoPorId,
-      dataCriacao: detalhe.dataCriacao,
-      dataAtualizacao: detalhe.dataAtualizacao,
-      tarefaPaiId: null,
-      equipeId: null,
-      equipe: null,
-      categoriaId: null,
-      categoria: null,
-    };
-  }
-
-  if (detalhe.tipo === "filha") {
-    return {
-      id: detalhe.id,
-      tipo: "filha",
-      titulo: detalhe.titulo,
-      descricao: detalhe.descricao,
-      projetoId: detalhe.projetoId,
-      prioridade: detalhe.prioridade,
-      status: detalhe.status,
-      dataEntrega: detalhe.dataEntrega,
-      horaEntrega: detalhe.horaEntrega,
-      dataConclusao: detalhe.dataConclusao,
-      criadoPorId: detalhe.criadoPorId,
-      atualizadoPorId: detalhe.atualizadoPorId,
-      dataCriacao: detalhe.dataCriacao,
-      dataAtualizacao: detalhe.dataAtualizacao,
-      tarefaPaiId: detalhe.tarefaPaiId,
-      equipeId: detalhe.equipeId,
-      equipe: detalhe.equipe,
-      categoriaId: detalhe.categoriaId,
-      categoria: detalhe.categoria,
-    };
-  }
-
-  return {
-    id: detalhe.id,
-    tipo: "orfa",
-    titulo: detalhe.titulo,
-    descricao: detalhe.descricao,
-    projetoId: detalhe.projetoId,
-    prioridade: detalhe.prioridade,
-    status: detalhe.status,
-    dataEntrega: detalhe.dataEntrega,
-    horaEntrega: detalhe.horaEntrega,
-    dataConclusao: detalhe.dataConclusao,
-    criadoPorId: detalhe.criadoPorId,
-    atualizadoPorId: detalhe.atualizadoPorId,
-    dataCriacao: detalhe.dataCriacao,
-    dataAtualizacao: detalhe.dataAtualizacao,
-    tarefaPaiId: null,
-    equipeId: detalhe.equipeId,
-    equipe: detalhe.equipe,
-    categoriaId: detalhe.categoriaId,
-    categoria: detalhe.categoria,
   };
 }
 
@@ -411,9 +136,12 @@ export function TarefasPageClient({
   const [view, setView] = useState<ViewMode>("kanban");
   const [filtrosObjetivos, setFiltrosObjetivos] = useState<TarefasFiltros>({
     ordenacao: "data_entrega",
+    responsavelIds: usuarioAtual?.id ? [usuarioAtual.id] : [],
+    escopoObjetivo: "todos",
   });
   const [filtrosTarefas, setFiltrosTarefas] = useState<TarefasFiltros>({
     ordenacao: "data_entrega",
+    responsavelIds: usuarioAtual?.id ? [usuarioAtual.id] : [],
   });
   const [itensState, setItensState] = useState<Tarefa[]>(
     resultadoInicial.data?.itens ?? [],
@@ -430,14 +158,14 @@ export function TarefasPageClient({
     : null;
 
   const perfilAtual = usuarioAtual?.perfil ?? null;
-  
+
   const podeVerObjetivos = [
     "admin_supremo",
     "coordenador_geral",
     "coordenador_equipe",
     "assistente",
   ].includes(perfilAtual ?? "");
-  
+
   const podeCriarObjetivos = [
     "admin_supremo",
     "coordenador_geral",
@@ -445,10 +173,9 @@ export function TarefasPageClient({
     "assistente",
   ].includes(perfilAtual ?? "");
 
-  const podeVerTodasEquipes = [
-    "admin_supremo",
-    "coordenador_geral",
-  ].includes(perfilAtual ?? "");
+  const podeVerTodasEquipes = ["admin_supremo", "coordenador_geral"].includes(
+    perfilAtual ?? "",
+  );
 
   const itens = useMemo(() => itensState, [itensState]);
 
@@ -462,23 +189,55 @@ export function TarefasPageClient({
     [itens],
   );
 
-  const objetivos = useMemo(
-    () =>
-      podeVerObjetivos
-        ? aplicarFiltrosLocais(objetivosBase, filtrosObjetivos)
-        : [],
-    [objetivosBase, filtrosObjetivos, podeVerObjetivos],
-  );
+  const objetivos = useMemo(() => {
+    if (!podeVerObjetivos) return [];
+
+    let filtrados = aplicarFiltrosLocais(objetivosBase, filtrosObjetivos);
+
+    if (filtrosObjetivos.escopoObjetivo === "global") {
+      filtrados = filtrados.filter(
+        (item) => item.tipo === "pai" && item.escopoObjetivo === "global",
+      );
+    } else if (
+      filtrosObjetivos.escopoObjetivo &&
+      filtrosObjetivos.escopoObjetivo !== "todos"
+    ) {
+      filtrados = filtrados.filter(
+        (item) =>
+          item.tipo === "pai" &&
+          item.escopoObjetivo === "equipe" &&
+          item.equipeId === filtrosObjetivos.escopoObjetivo,
+      );
+    }
+
+    return [...filtrados].sort((a, b) => {
+      const aConcluido = a.status === "concluida";
+      const bConcluido = b.status === "concluida";
+
+      if (aConcluido && !bConcluido) return 1;
+      if (!aConcluido && bConcluido) return -1;
+
+      return (
+        prazoTimestamp(a.dataEntrega, a.horaEntrega) -
+        prazoTimestamp(b.dataEntrega, b.horaEntrega)
+      );
+    });
+  }, [objetivosBase, filtrosObjetivos, podeVerObjetivos]);
 
   const tarefasFiltradas = useMemo(
     () => aplicarFiltrosLocais(tarefasBase, filtrosTarefas),
     [tarefasBase, filtrosTarefas],
   );
 
+  const objetivosTituloMap = useMemo(
+    () => new Map(objetivosBase.map((objetivo) => [objetivo.id, objetivo.titulo])),
+    [objetivosBase],
+  );
+
   const cardsKanban = useMemo(
     () =>
       tarefasFiltradas
-        .map(mapTarefaToKanbanCard)
+        .map((tarefa) => mapTarefaToKanbanCard(tarefa, objetivosTituloMap))
         .sort((a, b) => {
           if (a.emAtraso && !b.emAtraso) return -1;
           if (!a.emAtraso && b.emAtraso) return 1;
@@ -494,12 +253,7 @@ export function TarefasPageClient({
 
           return a.titulo.localeCompare(b.titulo);
         }),
-    [tarefasFiltradas],
-  );
-
-  const diasSemana = useMemo(
-    () => organizarSemana(tarefasFiltradas),
-    [tarefasFiltradas],
+    [tarefasFiltradas, objetivosTituloMap],
   );
 
   const tarefasPaiOptions = useMemo(
@@ -541,36 +295,6 @@ export function TarefasPageClient({
     });
   }
 
-  function formatarPrioridadeLabel(prioridade: string | null) {
-    if (!prioridade) return "Sem prioridade";
-    if (prioridade === "media") return "Média";
-    return prioridade.charAt(0).toUpperCase() + prioridade.slice(1);
-  }
-
-  function classePrioridadeObjetivo(prioridade: string | null) {
-    switch (prioridade) {
-      case "urgente":
-        return "border-red-800/60 bg-red-950/40 text-red-200";
-      case "alta":
-        return "border-amber-800/60 bg-amber-950/40 text-amber-200";
-      case "media":
-        return "border-sky-800/60 bg-sky-950/40 text-sky-200";
-      case "baixa":
-        return "border-zinc-700 bg-zinc-900 text-zinc-300";
-      default:
-        return "border-zinc-700 bg-zinc-900 text-zinc-400";
-    }
-  }
-
-  function iniciaisNome(nome: string) {
-    return nome
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((parte) => parte[0]?.toUpperCase() ?? "")
-      .join("");
-  }
-
   async function abrirTarefaPorId(
     tarefaId: string,
     mode: "view" | "edit" = "view",
@@ -610,34 +334,32 @@ export function TarefasPageClient({
   }
 
   async function criarNovaTarefa(values: CriarTarefaInput) {
-  setErroAcao(null);
-  setSubmittingModal(true);
+    setErroAcao(null);
+    setSubmittingModal(true);
 
-  try {
-    console.log("Payload criarNovaTarefa:", values);
+    try {
+      const resultado = await criarTarefa(values);
 
-    const resultado = await criarTarefa(values);
+      if (!resultado.sucesso || !resultado.data) {
+        throw new Error(
+          resultado.mensagem || "Não foi possível criar a tarefa.",
+        );
+      }
 
-    console.log("Resultado criarNovaTarefa:", resultado);
+      upsertListaComDetalhe(resultado.data);
+      fecharModal();
+    } catch (error) {
+      console.error("Erro em criarNovaTarefa:", error);
 
-    if (!resultado.sucesso || !resultado.data) {
-      throw new Error(
-        resultado.mensagem || "Não foi possível criar a tarefa.",
+      setErroAcao(
+        error instanceof Error
+          ? error.message
+          : `Erro ao criar tarefa: ${String(error)}`,
       );
+    } finally {
+      setSubmittingModal(false);
     }
-
-    upsertListaComDetalhe(resultado.data);
-    fecharModal();
-  } catch (error) {
-    console.error("Erro em criarNovaTarefa:", error);
-
-    setErroAcao(
-      error instanceof Error ? error.message : `Erro ao criar tarefa: ${String(error)}`,
-    );
-  } finally {
-    setSubmittingModal(false);
   }
-}
 
   async function salvarEdicaoTarefa(values: Omit<EditarTarefaInput, "id">) {
     if (!tarefaAtual) return;
@@ -914,8 +636,6 @@ export function TarefasPageClient({
     }
   }
 
-
-  
   async function handleExcluirComentario(comentarioId: string) {
     if (!tarefaAtual) return;
 
@@ -941,27 +661,8 @@ export function TarefasPageClient({
     }
   }
 
-
   return (
     <div className="space-y-6">
-      <section
-        className="rounded-3xl p-6 shadow-sm"
-        style={{
-          backgroundColor: "var(--surface-1)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div className="flex flex-col gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">
-            Tarefas
-          </h1>
-          <p className="max-w-3xl text-sm text-[var(--text-3)]">
-            Acompanhe objetivos, tarefas de objetivo e tarefas do módulo em uma
-            visão operacional mais clara e organizada.
-          </p>
-        </div>
-      </section>
-
       {erroInicial ? (
         <div
           className="rounded-2xl p-4 text-sm"
@@ -1002,389 +703,39 @@ export function TarefasPageClient({
       ) : null}
 
       {podeVerObjetivos ? (
-        <section
-          className="rounded-[28px] p-4 shadow-sm backdrop-blur-sm md:p-5"
-          style={{
-            backgroundColor: "var(--surface-1)",
-            border: "1px solid var(--border)",
-          }}
-        >
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-[var(--text-1)]">
-                  Objetivos
-                </h2>
-                <span
-                  className="rounded-full px-2.5 py-1 text-[11px]"
-                  style={{
-                    border: "1px solid var(--border)",
-                    backgroundColor: "var(--surface-0)",
-                    color: "var(--text-3)",
-                  }}
-                >
-                  {objetivos.length}
-                </span>
-              </div>
-
-              <p className="mt-1 text-sm text-[var(--text-3)]">
-                Objetivos ficam separados das tarefas operacionais para facilitar o
-                acompanhamento estratégico.
-              </p>
-            </div>
-
-            {podeCriarObjetivos ? (
-              <button
-                type="button"
-                onClick={() => setModal({ open: true, mode: "create", tipo: "pai" })}
-                className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl px-4 text-sm font-medium transition"
-                style={{
-                  backgroundColor: "var(--button-primary)",
-                  color: "var(--button-primary-foreground)",
-                  border: "1px solid transparent",
-                }}
-              >
-                Adicionar objetivo
-              </button>
-            ) : null}
-          </div>
-
-          <TarefasFilters
-            contexto="objetivos"
-            filtros={filtrosObjetivos}
-            usuarios={usuariosIniciais}
-            onChange={setFiltrosObjetivos}
-            compact
-          />
-
-          <div className="mt-4">
-            {objetivos.length > 0 ? (
-              <div className="overflow-x-auto pb-2">
-                <div className="flex min-w-max gap-4">
-                  {objetivos.map((objetivo) => {
-                    const resumo = calcularResumoObjetivo(objetivo.id, tarefasBase);
-
-                    return (
-                      <button
-                        key={objetivo.id}
-                        type="button"
-                        onClick={() => abrirTarefaPorId(objetivo.id, "view")}
-                        className="group w-[340px] flex-shrink-0 rounded-[24px] p-4 text-left transition hover:-translate-y-[1px]"
-                        style={{
-                          backgroundColor: "var(--surface-2)",
-                          border: "1px solid var(--border)",
-                          boxShadow: "var(--shadow-card)",
-                        }}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex flex-wrap gap-2">
-                            <span
-                              className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-medium ${corTipoLabel(
-                                objetivo.tipo,
-                              )}`}
-                            >
-                              {formatarTipoLabel(objetivo.tipo)}
-                            </span>
-
-                            <span
-                              className="inline-flex rounded-lg px-2.5 py-1 text-[11px] font-medium"
-                              style={{
-                                border: "1px solid var(--border)",
-                                backgroundColor: "var(--surface-0)",
-                                color: "var(--text-2)",
-                              }}
-                            >
-                              {formatarStatusLabel(objetivo.status)}
-                            </span>
-                          </div>
-
-                          <span
-                            className={`inline-flex rounded-lg border px-2.5 py-1 text-[11px] font-medium ${classePrioridadeObjetivo(
-                              objetivo.prioridade,
-                            )}`}
-                          >
-                            {formatarPrioridadeLabel(objetivo.prioridade)}
-                          </span>
-                        </div>
-
-                        <h3 className="mt-4 line-clamp-2 text-[15px] font-semibold leading-6 text-[var(--text-1)]">
-                          {objetivo.titulo}
-                        </h3>
-
-                        {objetivo.descricao ? (
-                          <p className="mt-2 line-clamp-2 text-sm leading-5 text-[var(--text-3)]">
-                            {objetivo.descricao}
-                          </p>
-                        ) : (
-                          <p className="mt-2 text-sm text-[var(--text-4)]">
-                            Sem descrição adicionada.
-                          </p>
-                        )}
-
-                        <div className="mt-4 grid grid-cols-2 gap-3">
-                          <div
-                            className="rounded-2xl px-3 py-2.5"
-                            style={{
-                              border: "1px solid var(--border)",
-                              backgroundColor: "var(--surface-3)",
-                            }}
-                          >
-                            <span className="block text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]">
-                              Status
-                            </span>
-                            <span className="mt-1 block text-sm text-[var(--text-2)]">
-                              {formatarStatusLabel(objetivo.status)}
-                            </span>
-                          </div>
-
-                          <div
-                            className="rounded-2xl px-3 py-2.5"
-                            style={{
-                              border: "1px solid var(--border)",
-                              backgroundColor: "var(--surface-3)",
-                            }}
-                          >
-                            <span className="block text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]">
-                              Prazo
-                            </span>
-                            <span className="mt-1 block text-sm text-[var(--text-2)]">
-                              {formatarDataPadrao(objetivo.dataEntrega) || "Sem prazo"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div
-                          className="mt-4 rounded-2xl px-3 py-3"
-                          style={{
-                            border: "1px solid var(--border)",
-                            backgroundColor: "var(--surface-3)",
-                          }}
-                        >
-                          <div className="mb-2 flex items-center justify-between gap-3">
-                            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-4)]">
-                              Progresso
-                            </span>
-                            <span className="text-xs font-medium text-[var(--text-2)]">
-                              {resumo.percentual}%
-                            </span>
-                          </div>
-
-                          <div
-                            className="h-2 overflow-hidden rounded-full"
-                            style={{ backgroundColor: "var(--surface-0)" }}
-                          >
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${resumo.percentual}%`,
-                                background:
-                                  resumo.percentual === 100
-                                    ? "#22c55e"
-                                    : resumo.percentual > 0
-                                    ? "#60a5fa"
-                                    : "var(--border)",
-                              }}
-                            />
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <span
-                              className="rounded-lg px-2.5 py-1 text-[11px] font-medium"
-                              style={{
-                                border: "1px solid var(--border)",
-                                backgroundColor: "var(--surface-0)",
-                                color: "var(--text-2)",
-                              }}
-                            >
-                              {resumo.total} tarefas
-                            </span>
-
-                            <span
-                              className="rounded-lg px-2.5 py-1 text-[11px] font-medium"
-                              style={{
-                                border: "1px solid var(--border)",
-                                backgroundColor: "var(--surface-0)",
-                                color: "var(--text-2)",
-                              }}
-                            >
-                              {resumo.concluidas} concluídas
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-4">
-                          {objetivo.responsaveis?.length ? (
-                            <div className="flex items-center gap-3">
-                              <div className="flex -space-x-2">
-                                {objetivo.responsaveis.slice(0, 4).map((responsavel) => (
-                                  <div
-                                    key={responsavel.id}
-                                    title={responsavel.nome}
-                                    className="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-semibold text-[var(--text-2)]"
-                                    style={{
-                                      border: "1px solid var(--border)",
-                                      backgroundColor: "var(--surface-1)",
-                                    }}
-                                  >
-                                    {iniciaisNome(responsavel.nome)}
-                                  </div>
-                                ))}
-                              </div>
-
-                              <div className="min-w-0">
-                                <p className="truncate text-xs text-[var(--text-2)]">
-                                  {objetivo.responsaveis[0]?.nome}
-                                  {objetivo.responsaveis.length > 1
-                                    ? ` +${objetivo.responsaveis.length - 1}`
-                                    : ""}
-                                </p>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-xs text-[var(--text-3)]">Sem responsáveis</span>
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div
-                className="rounded-2xl p-5 text-sm text-[var(--text-3)]"
-                style={{
-                  border: "1px dashed var(--border)",
-                  backgroundColor: "var(--surface-0)",
-                }}
-              >
-                Nenhum objetivo encontrado com os filtros atuais.
-              </div>
-            )}
-          </div>
-        </section>
+        <ObjetivosSection
+          objetivos={objetivos}
+          tarefasBase={tarefasBase}
+          usuarios={usuariosIniciais}
+          equipes={equipesIniciais}
+          usuarioAtual={usuarioAtual}
+          filtros={filtrosObjetivos}
+          onChangeFiltros={setFiltrosObjetivos}
+          podeCriarObjetivos={podeCriarObjetivos}
+          podeVerTodasEquipes={podeVerTodasEquipes}
+          onCriarObjetivo={() =>
+            setModal({ open: true, mode: "create", tipo: "pai" })
+          }
+          onAbrirObjetivo={(objetivoId) => abrirTarefaPorId(objetivoId, "view")}
+        />
       ) : null}
 
-      <section
-        className="rounded-[28px] p-4 shadow-sm backdrop-blur-sm md:p-5"
-        style={{
-          backgroundColor: "var(--surface-1)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold text-[var(--text-1)]">
-                Tarefas
-              </h2>
-              <span
-                className="rounded-full px-2.5 py-1 text-[11px]"
-                style={{
-                  border: "1px solid var(--border)",
-                  backgroundColor: "var(--surface-0)",
-                  color: "var(--text-3)",
-                }}
-              >
-                {tarefasFiltradas.length}
-              </span>
-            </div>
-
-            <p className="mt-1 text-sm text-[var(--text-3)]">
-              Acompanhe tarefas de objetivo e tarefas avulsas nas diferentes
-              visualizações do módulo.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setModal({ open: true, mode: "create", tipo: "orfa" })}
-            className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl px-4 text-sm font-medium transition"
-            style={{
-              backgroundColor: "var(--button-primary)",
-              color: "var(--button-primary-foreground)",
-              border: "1px solid transparent",
-            }}
-          >
-            Adicionar tarefa
-          </button>
-        </div>
-
-        <TarefasFilters
-          contexto="tarefas"
-          filtros={filtrosTarefas}
-          usuarios={usuariosIniciais}
-          onChange={setFiltrosTarefas}
-          compact
-        />
-
-        <div className="mt-4">
-          <div className="px-1">
-            <TarefasViewSwitcher value={view} onChange={setView} />
-          </div>
-
-          <div
-            className="rounded-b-[24px] rounded-tr-[24px] p-3 md:p-4"
-            style={{
-              border: "1px solid var(--border)",
-              backgroundColor: "var(--surface-0)",
-            }}
-          >
-            {view === "kanban" ? (
-              tarefasFiltradas.length > 0 ? (
-                <TarefasKanban
-                  cards={cardsKanban}
-                  onOpenTask={(taskId) => abrirTarefaPorId(taskId, "view")}
-                  onMoveTask={moverCardKanban}
-                  hideTipoBadge={!podeVerObjetivos}
-                  showEquipeBadge={podeVerTodasEquipes}
-                />
-              ) : (
-                <div
-                  className="rounded-2xl p-6 text-sm text-[var(--text-3)]"
-                  style={{
-                    border: "1px dashed var(--border)",
-                    backgroundColor: "var(--surface-0)",
-                  }}
-                >
-                  Nenhuma tarefa encontrada com os filtros atuais.
-                </div>
-              )
-            ) : view === "table" ? (
-              tarefasFiltradas.length > 0 ? (
-                <TarefasTable
-                  tarefas={tarefasFiltradas}
-                  onOpenTask={(taskId) => abrirTarefaPorId(taskId, "view")}
-                />
-              ) : (
-                <div
-                  className="rounded-2xl p-6 text-sm text-[var(--text-3)]"
-                  style={{
-                    border: "1px dashed var(--border)",
-                    backgroundColor: "var(--surface-0)",
-                  }}
-                >
-                  Nenhuma tarefa encontrada com os filtros atuais.
-                </div>
-              )
-            ) : tarefasFiltradas.length > 0 ? (
-              <TarefasWeekCalendar
-                dias={diasSemana}
-                onOpenTask={(taskId) => abrirTarefaPorId(taskId, "view")}
-              />
-            ) : (
-              <div
-                className="rounded-2xl p-6 text-sm text-[var(--text-3)]"
-                style={{
-                  border: "1px dashed var(--border)",
-                  backgroundColor: "var(--surface-0)",
-                }}
-              >
-                Nenhuma tarefa encontrada com os filtros atuais.
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
+      <TarefasSection
+        view={view}
+        onChangeView={setView}
+        tarefas={tarefasFiltradas}
+        cardsKanban={cardsKanban}
+        filtros={filtrosTarefas}
+        onChangeFiltros={setFiltrosTarefas}
+        usuarios={usuariosIniciais}
+        equipes={equipesIniciais}
+        podeVerObjetivos={podeVerObjetivos}
+        podeVerTodasEquipes={podeVerTodasEquipes}
+        objetivosTituloMap={objetivosTituloMap}
+        onCriarTarefa={() => setModal({ open: true, mode: "create", tipo: "orfa" })}
+        onAbrirTarefa={(taskId) => abrirTarefaPorId(taskId, "view")}
+        onMoverCardKanban={moverCardKanban}
+      />
 
       {modal.open && modal.tipo === "pai" ? (
         <TarefaPaiModal
@@ -1421,9 +772,7 @@ export function TarefasPageClient({
               return;
             }
 
-            await salvarEdicaoTarefa(
-              values as Omit<EditarTarefaInput, "id">,
-            );
+            await salvarEdicaoTarefa(values as Omit<EditarTarefaInput, "id">);
           }}
           onAddFilha={() => {
             if (!tarefaAtual || tarefaAtual.tipo !== "pai") return;
@@ -1492,9 +841,7 @@ export function TarefasPageClient({
               return;
             }
 
-            await salvarEdicaoTarefa(
-              values as Omit<EditarTarefaInput, "id">,
-            );
+            await salvarEdicaoTarefa(values as Omit<EditarTarefaInput, "id">);
           }}
           onAdicionarComentario={handleAdicionarComentario}
           onEditarComentario={handleEditarComentario}
@@ -1518,5 +865,4 @@ export function TarefasPageClient({
       ) : null}
     </div>
   );
-
 }

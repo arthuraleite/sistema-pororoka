@@ -13,6 +13,7 @@ type EquipeOption = {
   id: string;
   nome: string;
 };
+console.log("teste");
 
 type Props = {
   open: boolean;

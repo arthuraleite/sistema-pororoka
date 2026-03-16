@@ -24,7 +24,7 @@ export default async function LayoutPrivado({
 
   const acesso = await verificarAcessoUsuario(user.id);
 
-  if (!acesso.permitido) {
+  if (!acesso.permitido || !acesso.usuario) {
     await supabase.auth.signOut();
 
     if (acesso.motivo === "inativo") {
@@ -38,6 +38,8 @@ export default async function LayoutPrivado({
     redirect("/login?erro=sem_acesso");
   }
 
+  const usuarioInterno = acesso.usuario;
+
   return (
     <AppShell
       nomeUsuario={
@@ -45,6 +47,8 @@ export default async function LayoutPrivado({
       }
       emailUsuario={user.email ?? null}
       avatarUrl={user.user_metadata?.avatar_url ?? null}
+      perfilUsuario={usuarioInterno.perfil}
+      equipeNome={usuarioInterno.equipe?.nome ?? null}
     >
       {children}
     </AppShell>

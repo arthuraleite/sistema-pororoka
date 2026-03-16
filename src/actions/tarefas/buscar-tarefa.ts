@@ -37,7 +37,7 @@ export async function buscarTarefa(
     const { data: usuarioAtual, error: usuarioError } = await supabase
       .from("usuarios")
       .select("id, perfil, equipe_id")
-      .eq("auth_user_id", user.id)
+      .eq("id", user.id)
       .maybeSingle();
 
     if (usuarioError || !usuarioAtual) {
