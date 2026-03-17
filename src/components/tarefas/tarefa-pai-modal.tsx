@@ -2,52 +2,64 @@
 
 import { useMemo, useState } from "react";
 
+import { TarefaAtualizacoesPanel } from "@/components/tarefas/tarefa-atualizacoes-panel";
 import { TarefaChecklistFilhas } from "@/components/tarefas/tarefa-checklist-filhas";
 import { TarefaComentariosPanel } from "@/components/tarefas/tarefa-comentarios-panel";
+import { TarefaFilhaQuickModal } from "@/components/tarefas/tarefa-filha-quick-modal";
 import { TarefaFormBase } from "@/components/tarefas/tarefa-form-base";
+import { TarefaModalShell } from "@/components/tarefas/tarefa-modal-shell";
+import { useTarefaPaiDraft } from "@/components/tarefas/hooks/use-tarefa-pai-draft";
 import type {
+  CategoriaTarefa,
   EscopoObjetivo,
   StatusTarefa,
   TarefaDetalhe,
   UsuarioResumoTarefa,
 } from "@/types/tarefas/tarefas.types";
 
+type EquipeOption = {
+  id: string;
+  nome: string;
+};
+
+type PayloadObjetivo = {
+  tipo: "pai";
+  escopoObjetivo?: EscopoObjetivo;
+  equipeId?: string | null;
+  titulo: string;
+  descricao?: string | null;
+  projetoId?: string | null;
+  prioridade?: "urgente" | "alta" | "media" | "baixa" | null;
+  status?:
+    | "a_fazer"
+    | "em_andamento"
+    | "atencao"
+    | "em_pausa"
+    | "em_atraso"
+    | "concluida";
+  dataEntrega: string;
+  horaEntrega?: string | null;
+  responsavelIds: string[];
+  links: Array<{ id?: string; url: string; texto?: string | null }>;
+};
+
 type Props = {
   open: boolean;
-  mode: "create" | "edit" | "view";
+  isNew: boolean;
   tarefa?: TarefaDetalhe | null;
   usuarios: UsuarioResumoTarefa[];
+  categorias?: CategoriaTarefa[];
   usuarioAtualId?: string | null;
   podeModerarComentarios?: boolean;
   podeSelecionarObjetivoGlobal?: boolean;
-  equipes?: Array<{ id: string; nome: string }>;
+  equipes?: EquipeOption[];
+  submitting?: boolean;
   onClose: () => void;
-  onEditRequest?: () => void;
-  onViewRequest?: () => void;
   onReabrir?: (
     novoStatus: Exclude<StatusTarefa, "concluida" | "em_atraso">,
   ) => void | Promise<void>;
   onAtualizarStatus?: (novoStatus: StatusTarefa) => void | Promise<void>;
-  onSubmit?: (values: {
-    tipo: "pai";
-    escopoObjetivo?: EscopoObjetivo;
-    equipeId?: string | null;
-    titulo: string;
-    descricao?: string | null;
-    projetoId?: string | null;
-    prioridade?: "urgente" | "alta" | "media" | "baixa" | null;
-    status?:
-      | "a_fazer"
-      | "em_andamento"
-      | "atencao"
-      | "em_pausa"
-      | "em_atraso"
-      | "concluida";
-    dataEntrega: string;
-    horaEntrega?: string | null;
-    responsavelIds: string[];
-    links: Array<{ id?: string; url: string; texto?: string | null }>;
-  }) => void | Promise<void>;
+  onExcluir?: () => void | Promise<void>;
   onAddFilha?: () => void;
   onAdicionarComentario?: (values: {
     conteudo: string;
@@ -60,163 +72,533 @@ type Props = {
     linkExterno?: string | null;
   }) => void | Promise<void>;
   onExcluirComentario?: (comentarioId: string) => void | Promise<void>;
+  onSubmit?: (
+    values: PayloadObjetivo,
+    extras?: {
+      filhasDraft: ReturnType<typeof useTarefaPaiDraft>["filhas"];
+      comentariosDraft: ReturnType<typeof useTarefaPaiDraft>["comentarios"];
+    },
+  ) => void | Promise<void>;
 };
 
-type PainelLateral = "filhas" | "comentarios";
+function formatarStatus(status?: string | null) {
+  if (!status) return "Não definido";
 
-function tituloModal(mode: Props["mode"]) {
-  if (mode === "create") return "Novo objetivo";
-  if (mode === "edit") return "Editar objetivo";
-  return "Objetivo";
+  return status
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letra) => letra.toUpperCase());
 }
 
-function formatarStatus(status: string) {
-  return status.replaceAll("_", " ");
+function formatarPrazo(data?: string | null, hora?: string | null) {
+  if (!data) return "Prazo não definido";
+
+  const dataRef = new Date(`${data}T00:00:00`);
+  const dataFormatada = Number.isNaN(dataRef.getTime())
+    ? data
+    : new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(dataRef);
+
+  if (!hora) {
+    return dataFormatada;
+  }
+
+  return `${dataFormatada} às ${hora.slice(0, 5)}`;
 }
 
-function getStatusClassName(status: StatusTarefa) {
-  if (status === "concluida") return "status-success";
-  if (status === "em_atraso") return "status-danger";
-  if (status === "atencao") return "status-warning";
-  if (status === "em_andamento") return "status-info";
-  return "status-neutral";
+function getTituloModal(isNew: boolean, tarefa?: TarefaDetalhe | null) {
+  if (isNew) {
+    return "Novo objetivo";
+  }
+
+  return tarefa?.titulo?.trim() || "Objetivo";
 }
 
-function PainelAcordeao({
-  id,
-  titulo,
-  aberto,
-  onToggle,
-  contador,
-  children,
-}: {
-  id: PainelLateral;
-  titulo: string;
-  aberto: boolean;
-  onToggle: (id: PainelLateral) => void;
-  contador?: number;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="panel-theme overflow-hidden rounded-[24px]">
-      <button
-        type="button"
-        onClick={() => onToggle(id)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left interactive-surface"
-        style={{ borderBottom: aberto ? "1px solid var(--border)" : "1px solid transparent" }}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="truncate text-sm font-semibold text-[var(--text-1)]">
-            {titulo}
-          </h3>
+function getSubtituloModal(isNew: boolean) {
+  if (isNew) {
+    return "Preencha o objetivo e já organize filhas, comentários e atualizações antes de salvar.";
+  }
 
-          {typeof contador === "number" ? (
-            <span
-              className="badge-neutral inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-[11px] font-medium"
-            >
-              {contador}
-            </span>
-          ) : null}
-        </div>
+  return "Edite o objetivo diretamente, acompanhe filhas, comentários e o histórico automático.";
+}
 
-        <span className="shrink-0 text-xs text-[var(--text-4)]">
-          {aberto ? "▴" : "▾"}
-        </span>
-      </button>
-
-      {aberto ? <div className="p-4">{children}</div> : null}
-    </section>
-  );
+function toEscopoObjetivo(
+  value: unknown,
+): "global" | "equipe" | undefined {
+  return value === "global" || value === "equipe" ? value : undefined;
 }
 
 export function TarefaPaiModal({
   open,
-  mode,
+  isNew,
   tarefa,
   usuarios,
+  categorias = [],
   usuarioAtualId,
   podeModerarComentarios = false,
   podeSelecionarObjetivoGlobal = false,
   equipes = [],
+  submitting = false,
   onClose,
-  onEditRequest,
-  onViewRequest,
   onReabrir,
   onAtualizarStatus,
-  onSubmit,
+  onExcluir,
   onAddFilha,
   onAdicionarComentario,
   onEditarComentario,
   onExcluirComentario,
+  onSubmit,
 }: Props) {
-  const [painelAberto, setPainelAberto] = useState<PainelLateral>("filhas");
+  const draft = useTarefaPaiDraft();
+  const [quickFilhaOpen, setQuickFilhaOpen] = useState(false);
 
-  const tituloCabecalho = useMemo(() => {
-    if (mode === "create") return "Novo objetivo";
-    return tarefa?.titulo?.trim() || tituloModal(mode);
-  }, [mode, tarefa?.titulo]);
+  const tituloCabecalho = useMemo(
+    () => getTituloModal(isNew, tarefa),
+    [isNew, tarefa],
+  );
 
-  const subtituloCabecalho = useMemo(() => {
-    if (mode === "create") {
-      return "Estruture um objetivo e defina responsáveis, prazo e contexto de execução.";
+  const subtituloCabecalho = useMemo(
+    () => getSubtituloModal(isNew),
+    [isNew],
+  );
+
+  const initialValues =
+    tarefa?.tipo === "pai"
+      ? {
+          titulo: tarefa.titulo,
+          descricao: tarefa.descricao,
+          projetoId: tarefa.projetoId,
+          escopoObjetivo: tarefa.escopoObjetivo,
+          equipeId: tarefa.equipeId,
+          prioridade: tarefa.prioridade,
+          status: tarefa.status,
+          dataEntrega: tarefa.dataEntrega,
+          horaEntrega: tarefa.horaEntrega,
+          responsavelIds: tarefa.responsaveis.map((item) => item.id),
+          links: tarefa.links,
+        }
+      : undefined;
+
+  const objetivoEhEquipe =
+    (isNew
+      ? initialValues?.escopoObjetivo
+      : tarefa?.tipo === "pai"
+        ? tarefa.escopoObjetivo
+        : undefined) === "equipe";
+
+  const equipePredefinidaId =
+    objetivoEhEquipe && (isNew ? initialValues?.equipeId : tarefa?.equipeId)
+      ? (isNew ? initialValues?.equipeId : tarefa?.equipeId) ?? null
+      : null;
+
+  const bloquearEquipeFilha = Boolean(objetivoEhEquipe && equipePredefinidaId);
+
+  const filhasSidebar = isNew
+    ? draft.filhas.map((filha) => ({
+        ...filha,
+        id: filha.idLocal,
+        origem: "draft" as const,
+      }))
+    : (tarefa?.filhas ?? []).map((filha) => ({
+        ...filha,
+        origem: "persistida" as const,
+      }));
+
+  const atualizacoesSidebar = useMemo(() => {
+    if (isNew) {
+      return draft.atualizacoes.map((item) => ({
+        id: item.idLocal,
+        descricao: item.descricao,
+        criadoEm: item.criadoEm,
+      }));
     }
 
-    return "Acompanhe o objetivo, suas tarefas filhas e a conversa associada.";
-  }, [mode]);
+    const itens: Array<{ id: string; descricao: string; criadoEm: string }> = [];
 
-  if (!open) return null;
+    if (tarefa?.dataCriacao) {
+      itens.push({
+        id: `criacao_${tarefa.id}`,
+        descricao: "Objetivo criado.",
+        criadoEm: tarefa.dataCriacao,
+      });
+    }
 
-  const mostrarLateral = mode !== "create" && !!tarefa;
+    if (
+      tarefa?.dataAtualizacao &&
+      tarefa.dataAtualizacao !== tarefa.dataCriacao
+    ) {
+      itens.push({
+        id: `edicao_${tarefa.id}`,
+        descricao: "Objetivo atualizado.",
+        criadoEm: tarefa.dataAtualizacao,
+      });
+    }
+
+    for (const comentario of tarefa?.comentarios ?? []) {
+      itens.push({
+        id: `comentario_${comentario.id}`,
+        descricao: "Comentário adicionado.",
+        criadoEm: comentario.dataCriacao,
+      });
+    }
+
+    return itens.sort(
+      (a, b) =>
+        new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime(),
+    );
+  }, [draft.atualizacoes, isNew, tarefa]);
+
+  async function handleSubmit(values: {
+    tipo: "pai" | "filha" | "orfa";
+    titulo: string;
+    descricao?: string | null;
+    tarefaPaiId?: string | null;
+    equipeId?: string | null;
+    categoriaId?: string | null;
+    projetoId?: string | null;
+    escopoObjetivo?: string | null;
+    prioridade?: "urgente" | "alta" | "media" | "baixa" | null;
+    status?:
+      | "a_fazer"
+      | "em_andamento"
+      | "atencao"
+      | "em_pausa"
+      | "em_atraso"
+      | "concluida";
+    dataEntrega: string;
+    horaEntrega?: string | null;
+    responsavelIds: string[];
+    links: Array<{ id?: string; url: string; texto?: string | null }>;
+  }) {
+    if (!onSubmit) return;
+    if (values.tipo !== "pai") return;
+
+    const payload: PayloadObjetivo = {
+      tipo: "pai",
+      escopoObjetivo: toEscopoObjetivo(values.escopoObjetivo),
+      equipeId: values.equipeId ?? null,
+      titulo: values.titulo,
+      descricao: values.descricao ?? null,
+      projetoId: values.projetoId ?? null,
+      prioridade: values.prioridade ?? null,
+      status: values.status,
+      dataEntrega: values.dataEntrega,
+      horaEntrega: values.horaEntrega ?? null,
+      responsavelIds: values.responsavelIds,
+      links: values.links,
+    };
+
+    await onSubmit(payload, {
+      filhasDraft: draft.filhas,
+      comentariosDraft: draft.comentarios,
+    });
+
+    if (isNew) {
+      draft.reset();
+    }
+  }
+
+  async function handleAdicionarComentario(values: {
+    conteudo: string;
+    linkExterno?: string | null;
+    comentarioPaiId?: string | null;
+  }) {
+    if (isNew) {
+      draft.adicionarComentario(values);
+      return;
+    }
+
+    await onAdicionarComentario?.(values);
+  }
+
+  async function handleEditarComentario(values: {
+    comentarioId: string;
+    conteudo: string;
+    linkExterno?: string | null;
+  }) {
+    if (isNew) {
+      draft.editarComentario(values.comentarioId, {
+        conteudo: values.conteudo,
+        linkExterno: values.linkExterno ?? null,
+      });
+      return;
+    }
+
+    await onEditarComentario?.(values);
+  }
+
+  async function handleExcluirComentario(comentarioId: string) {
+    if (isNew) {
+      draft.removerComentario(comentarioId);
+      return;
+    }
+
+    await onExcluirComentario?.(comentarioId);
+  }
+
+  if (!open) {
+    return null;
+  }
 
   return (
-    <div className="overlay-backdrop fixed inset-0 z-50 overflow-y-auto p-3 md:p-5">
-      <div className="flex min-h-full items-start justify-center">
-        <div
-          className="panel-theme flex w-full max-w-[1600px] flex-col overflow-hidden rounded-[28px]"
-          style={{
-            minHeight: "min(880px, calc(100vh - 24px))",
-            maxHeight: "calc(100vh - 24px)",
-          }}
-        >
-          <header
-            className="flex flex-wrap items-start justify-between gap-4 px-5 py-5 md:px-6"
-            style={{ borderBottom: "1px solid var(--border)" }}
-          >
-            <div className="min-w-0">
-              <h2 className="truncate text-xl font-semibold text-[var(--text-1)] md:text-2xl">
-                {tituloCabecalho}
-              </h2>
-              <p className="mt-1 max-w-3xl text-sm text-[var(--text-3)]">
-                {subtituloCabecalho}
-              </p>
+    <>
+      <TarefaModalShell
+        open={open}
+        title={tituloCabecalho}
+        subtitle={subtituloCabecalho}
+        onClose={onClose}
+        main={
+          <div className="space-y-5">
+            {!isNew && tarefa?.tipo === "pai" ? (
+              <section
+                className="rounded-[var(--radius-2xl)] border px-4 py-3"
+                style={{
+                  borderColor: "var(--border)",
+                  backgroundColor: "var(--surface-0)",
+                }}
+              >
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div>
+                    <p
+                      className="text-[11px] font-medium uppercase tracking-[0.14em]"
+                      style={{ color: "var(--text-4)" }}
+                    >
+                      Status
+                    </p>
+                    <p
+                      className="mt-1 text-sm font-medium"
+                      style={{ color: "var(--text-2)" }}
+                    >
+                      {formatarStatus(tarefa.status)}
+                    </p>
+                  </div>
 
-              {tarefa && mode !== "create" ? (
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${getStatusClassName(
-                      tarefa.status,
-                    )}`}
-                  >
-                    {formatarStatus(tarefa.status)}
-                  </span>
+                  <div>
+                    <p
+                      className="text-[11px] font-medium uppercase tracking-[0.14em]"
+                      style={{ color: "var(--text-4)" }}
+                    >
+                      Prioridade
+                    </p>
+                    <p
+                      className="mt-1 text-sm font-medium"
+                      style={{ color: "var(--text-2)" }}
+                    >
+                      {tarefa.prioridade
+                        ? formatarStatus(tarefa.prioridade)
+                        : "Não definida"}
+                    </p>
+                  </div>
 
-                  {tarefa.prioridade ? (
-                    <span className="badge-neutral inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium">
-                      Prioridade {tarefa.prioridade}
-                    </span>
-                  ) : null}
-
-                  {tarefa.dataEntrega ? (
-                    <span className="badge-neutral inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium">
-                      Prazo {tarefa.dataEntrega}
-                      {tarefa.horaEntrega ? ` às ${tarefa.horaEntrega.slice(0, 5)}` : ""}
-                    </span>
-                  ) : null}
+                  <div>
+                    <p
+                      className="text-[11px] font-medium uppercase tracking-[0.14em]"
+                      style={{ color: "var(--text-4)" }}
+                    >
+                      Prazo
+                    </p>
+                    <p
+                      className="mt-1 text-sm font-medium"
+                      style={{ color: "var(--text-2)" }}
+                    >
+                      {formatarPrazo(tarefa.dataEntrega, tarefa.horaEntrega)}
+                    </p>
+                  </div>
                 </div>
+              </section>
+            ) : null}
+
+            <div className="mx-auto w-full max-w-[1120px]">
+              <TarefaFormBase
+                mode={isNew ? "create" : "edit"}
+                tipo="pai"
+                usuarios={usuarios}
+                categorias={categorias}
+                equipes={equipes}
+                allowProjeto
+                allowEquipe
+                allowPrioridade
+                allowStatus={!isNew}
+                allowEscopoObjetivo
+                canSelectObjetivoGlobal={podeSelecionarObjetivoGlobal}
+                initialValues={initialValues}
+                onSubmit={handleSubmit}
+                submitLabel={isNew ? "Salvar objetivo" : "Salvar alterações"}
+                formId="form-tarefa-pai"
+              />
+            </div>
+          </div>
+        }
+        sidebar={
+          <div className="space-y-4">
+            <section
+              className="rounded-[var(--radius-2xl)] border p-4"
+              style={{
+                borderColor: "var(--border)",
+                backgroundColor: "var(--surface-0)",
+              }}
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    Tarefas filhas
+                  </h3>
+                  <p
+                    className="mt-1 text-xs"
+                    style={{ color: "var(--text-3)" }}
+                  >
+                    Organize as entregas vinculadas a este objetivo.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onAddFilha) {
+                      onAddFilha();
+                      return;
+                    }
+
+                    setQuickFilhaOpen(true);
+                  }}
+                  className="button-neutral inline-flex h-9 items-center justify-center rounded-xl px-3 text-sm font-medium"
+                >
+                  + Adicionar
+                </button>
+              </div>
+
+              <TarefaChecklistFilhas
+                titulo="Checklist das filhas"
+                itens={filhasSidebar}
+                emptyLabel="Nenhuma tarefa filha adicionada ainda."
+                onRemoverDraft={draft.removerFilha}
+              />
+            </section>
+
+            <section
+              className="rounded-[var(--radius-2xl)] border p-4"
+              style={{
+                borderColor: "var(--border)",
+                backgroundColor: "var(--surface-0)",
+              }}
+            >
+              <div className="mb-3">
+                <h3
+                  className="text-sm font-semibold"
+                  style={{ color: "var(--text-1)" }}
+                >
+                  Comentários
+                </h3>
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: "var(--text-3)" }}
+                >
+                  Registre a conversa e os pontos importantes do objetivo.
+                </p>
+              </div>
+
+              <TarefaComentariosPanel
+                comentarios={tarefa?.comentarios ?? []}
+                comentariosDraft={isNew ? draft.comentarios : []}
+                usuarioAtualId={usuarioAtualId}
+                podeModerar={podeModerarComentarios}
+                onAdicionar={handleAdicionarComentario}
+                onEditar={handleEditarComentario}
+                onExcluir={handleExcluirComentario}
+                onAdicionarDraft={draft.adicionarComentario}
+                onEditarDraft={(values) =>
+                  draft.editarComentario(values.comentarioId, {
+                    conteudo: values.conteudo,
+                    linkExterno: values.linkExterno ?? null,
+                  })
+                }
+                onExcluirDraft={draft.removerComentario}
+                isDraftMode={isNew}
+                disabled={false}
+              />
+            </section>
+
+            <section
+              className="rounded-[var(--radius-2xl)] border p-4"
+              style={{
+                borderColor: "var(--border)",
+                backgroundColor: "var(--surface-0)",
+              }}
+            >
+              <div className="mb-3">
+                <h3
+                  className="text-sm font-semibold"
+                  style={{ color: "var(--text-1)" }}
+                >
+                  Atualizações
+                </h3>
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: "var(--text-3)" }}
+                >
+                  Histórico automático dos eventos do objetivo.
+                </p>
+              </div>
+
+              <TarefaAtualizacoesPanel
+                itens={atualizacoesSidebar}
+                vazioLabel="Nenhuma atualização registrada até o momento."
+              />
+            </section>
+          </div>
+        }
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {!isNew && tarefa?.tipo === "pai" ? (
+                <>
+                  {tarefa.status !== "concluida" ? (
+                    (["a_fazer", "em_andamento", "atencao", "em_pausa"] as const)
+                      .filter((status) => status !== tarefa.status)
+                      .map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => onAtualizarStatus?.(status)}
+                          className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                        >
+                          Marcar {formatarStatus(status)}
+                        </button>
+                      ))
+                  ) : (
+                    (["a_fazer", "em_andamento", "atencao", "em_pausa"] as const).map(
+                      (status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => onReabrir?.(status)}
+                          className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                        >
+                          Reabrir em {formatarStatus(status)}
+                        </button>
+                      ),
+                    )
+                  )}
+
+                  {onExcluir ? (
+                    <button
+                      type="button"
+                      onClick={onExcluir}
+                      className="button-danger inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                    >
+                      Excluir objetivo
+                    </button>
+                  ) : null}
+                </>
               ) : null}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={onClose}
@@ -224,179 +606,47 @@ export function TarefaPaiModal({
               >
                 Fechar
               </button>
-            </div>
-          </header>
 
-          {tarefa && mode !== "create" ? (
-            <div
-              className="flex flex-wrap gap-2 px-5 py-4 md:px-6"
-              style={{ borderBottom: "1px solid var(--border)" }}
-            >
-              {mode === "view" ? (
-                <button
-                  type="button"
-                  onClick={onEditRequest}
-                  className="button-primary inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
-                >
-                  Editar objetivo
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onViewRequest}
-                  className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
-                >
-                  Voltar para visualização
-                </button>
-              )}
-
-              {onAddFilha ? (
-                <button
-                  type="button"
-                  onClick={onAddFilha}
-                  className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
-                >
-                  Nova tarefa filha
-                </button>
-              ) : null}
-
-              {tarefa.status !== "concluida" ? (
-                <>
-                  {(["a_fazer", "em_andamento", "atencao", "em_pausa"] as const)
-                    .filter((status) => status !== tarefa.status)
-                    .map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => onAtualizarStatus?.(status)}
-                        className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
-                      >
-                        Marcar {formatarStatus(status)}
-                      </button>
-                    ))}
-                </>
-              ) : (
-                <>
-                  {(["a_fazer", "em_andamento", "atencao", "em_pausa"] as const).map(
-                    (status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => onReabrir?.(status)}
-                        className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
-                      >
-                        Reabrir em {formatarStatus(status)}
-                      </button>
-                    ),
-                  )}
-                </>
-              )}
-            </div>
-          ) : null}
-
-          <div
-            className={[
-              "min-h-0 flex-1",
-              mostrarLateral
-                ? "grid xl:grid-cols-[minmax(0,1fr)_420px]"
-                : "block",
-            ].join(" ")}
-          >
-            <main className="min-h-0 overflow-y-auto px-5 py-5 md:px-6 md:py-6">
-              <div className="mx-auto max-w-[1120px]">
-                <TarefaFormBase
-                  mode={mode}
-                  tipo="pai"
-                  usuarios={usuarios}
-                  equipes={equipes}
-                  allowProjeto
-                  allowEquipe
-                  allowPrioridade
-                  allowStatus={mode !== "create"}
-                  allowEscopoObjetivo
-                  canSelectObjetivoGlobal={podeSelecionarObjetivoGlobal}
-                  initialValues={
-                    tarefa?.tipo === "pai"
-                      ? {
-                          titulo: tarefa.titulo,
-                          descricao: tarefa.descricao,
-                          projetoId: tarefa.projetoId,
-                          escopoObjetivo: tarefa.escopoObjetivo,
-                          equipeId: tarefa.equipeId,
-                          prioridade: tarefa.prioridade,
-                          status: tarefa.status,
-                          dataEntrega: tarefa.dataEntrega,
-                          horaEntrega: tarefa.horaEntrega,
-                          responsavelIds: tarefa.responsaveis.map((item) => item.id),
-                          links: tarefa.links,
-                        }
-                      : undefined
-                  }
-                  onSubmit={async (values) => {
-                    if (!onSubmit) return;
-
-                    await onSubmit({
-                      ...values,
-                      tipo: "pai",
-                      escopoObjetivo:
-                        values.escopoObjetivo === null
-                          ? undefined
-                          : values.escopoObjetivo,
-                    });
-                  }}
-                  submitLabel={
-                    mode === "create"
-                      ? "Criar objetivo"
-                      : mode === "edit"
-                        ? "Salvar alterações"
-                        : "Fechar"
-                  }
-                />
-              </div>
-            </main>
-
-            {mostrarLateral ? (
-              <aside
-                className="min-h-0 overflow-y-auto px-5 py-5 md:px-6 md:py-6"
-                style={{ borderLeft: "1px solid var(--border)" }}
+              <button
+                type="submit"
+                form="form-tarefa-pai"
+                disabled={submitting}
+                className="button-primary inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <div className="space-y-4">
-                  <PainelAcordeao
-                    id="filhas"
-                    titulo="Tarefas filhas"
-                    contador={tarefa?.filhas?.length ?? 0}
-                    aberto={painelAberto === "filhas"}
-                    onToggle={setPainelAberto}
-                  >
-                    <TarefaChecklistFilhas
-                      titulo="Checklist das filhas"
-                      itens={tarefa?.filhas ?? []}
-                    />
-                  </PainelAcordeao>
-
-                  <PainelAcordeao
-                    id="comentarios"
-                    titulo="Comentários"
-                    contador={tarefa?.comentarios?.length ?? 0}
-                    aberto={painelAberto === "comentarios"}
-                    onToggle={setPainelAberto}
-                  >
-                    <TarefaComentariosPanel
-                      comentarios={tarefa?.comentarios ?? []}
-                      usuarioAtualId={usuarioAtualId}
-                      podeModerar={podeModerarComentarios}
-                      onAdicionar={onAdicionarComentario}
-                      onEditar={onEditarComentario}
-                      onExcluir={onExcluirComentario}
-                      disabled={mode === "create"}
-                    />
-                  </PainelAcordeao>
-                </div>
-              </aside>
-            ) : null}
+                {submitting
+                  ? "Salvando..."
+                  : isNew
+                    ? "Salvar objetivo"
+                    : "Salvar alterações"}
+              </button>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        }
+      />
+
+      <TarefaFilhaQuickModal
+        key={`${isNew ? "novo" : tarefa?.id ?? "sem-id"}-${quickFilhaOpen ? "open" : "closed"}`}
+        open={quickFilhaOpen}
+        onClose={() => setQuickFilhaOpen(false)}
+        equipes={equipes}
+        categorias={categorias}
+        usuarios={usuarios}
+        equipePredefinidaId={equipePredefinidaId}
+        bloquearEquipe={bloquearEquipeFilha}
+        onSubmit={(values) => {
+          draft.adicionarFilha({
+            titulo: values.titulo,
+            descricao: values.descricao ?? null,
+            equipeId: values.equipeId,
+            categoriaId: values.categoriaId,
+            prioridade: values.prioridade,
+            dataEntrega: values.dataEntrega,
+            horaEntrega: values.horaEntrega ?? null,
+            responsavelIds: values.responsavelIds,
+            status: values.status ?? "a_fazer",
+          });
+        }}
+      />
+    </>
   );
 }

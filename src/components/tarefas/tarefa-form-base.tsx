@@ -73,6 +73,7 @@ type Props = {
     links: LinkItem[];
   }) => void | Promise<void>;
   submitLabel?: string;
+  formId?: string;
 };
 
 const prioridades: Array<{ value: PrioridadeTarefa; label: string }> = [
@@ -200,6 +201,7 @@ export function TarefaFormBase({
   canSelectObjetivoGlobal = false,
   onSubmit,
   submitLabel,
+  formId,
 }: Props) {
   const readonly = mode === "view";
 
@@ -407,7 +409,7 @@ export function TarefaFormBase({
   return (
     <>
       <div ref={containerRef}>
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form id={formId} onSubmit={handleSubmit} className="space-y-5">
           {allowTipoSelector ? (
             <section className="rounded-[24px] p-4" style={{ backgroundColor: "var(--surface-1)", border: "1px solid var(--border)" }}>
               <FieldLabel>Tipo</FieldLabel>
