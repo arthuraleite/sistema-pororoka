@@ -4,6 +4,9 @@ type AtualizacaoItem = {
   id: string;
   descricao: string;
   criadoEm: string;
+  autorNome?: string | null;
+  titulo?: string | null;
+  detalhe?: string | null;
 };
 
 type Props = {
@@ -32,12 +35,8 @@ export function TarefaAtualizacoesPanel({
     <section className="space-y-3">
       {itens.length === 0 ? (
         <div
-          className="rounded-2xl p-4 text-sm"
-          style={{
-            border: "1px dashed var(--border)",
-            backgroundColor: "var(--surface-0)",
-            color: "var(--text-3)",
-          }}
+          className="text-sm"
+          style={{ color: "var(--text-4)" }}
         >
           {vazioLabel}
         </div>
@@ -45,35 +44,45 @@ export function TarefaAtualizacoesPanel({
 
       <div className="space-y-3">
         {itens.map((item) => (
-          <article
-            key={item.id}
-            className="rounded-2xl p-4"
-            style={{
-              border: "1px solid var(--border)",
-              backgroundColor: "var(--surface-0)",
-            }}
-          >
-            <div className="flex items-start gap-3">
-              <div
-                className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: "var(--accent-2)" }}
-              />
+          <article key={item.id} className="flex items-start gap-3">
+            <div
+              className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: "var(--accent-2)" }}
+            />
 
-              <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-1">
+              {item.titulo ? (
                 <p
-                  className="text-sm leading-6"
-                  style={{ color: "var(--text-2)" }}
+                  className="text-sm font-medium"
+                  style={{ color: "var(--text-1)" }}
                 >
-                  {item.descricao}
+                  {item.titulo}
                 </p>
+              ) : null}
 
+              <p
+                className="text-sm leading-6"
+                style={{ color: "var(--text-2)" }}
+              >
+                {item.autorNome ? `${item.autorNome} · ` : ""}
+                {item.descricao}
+              </p>
+
+              {item.detalhe ? (
                 <p
-                  className="mt-2 text-xs"
+                  className="text-xs leading-5"
                   style={{ color: "var(--text-4)" }}
                 >
-                  {formatarDataHora(item.criadoEm)}
+                  {item.detalhe}
                 </p>
-              </div>
+              ) : null}
+
+              <p
+                className="text-xs"
+                style={{ color: "var(--text-4)" }}
+              >
+                {formatarDataHora(item.criadoEm)}
+              </p>
             </div>
           </article>
         ))}

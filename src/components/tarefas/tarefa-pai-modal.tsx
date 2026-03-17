@@ -506,6 +506,12 @@ export function TarefaPaiModal({
                 comentarios={tarefa?.comentarios ?? []}
                 comentariosDraft={isNew ? draft.comentarios : []}
                 usuarioAtualId={usuarioAtualId}
+                usuarioAtualNome={
+                  usuarios.find((usuario) => usuario.id === usuarioAtualId)?.nome ?? null
+                }
+                usuarioAtualAvatarUrl={
+                  usuarios.find((usuario) => usuario.id === usuarioAtualId)?.avatarUrl ?? null
+                }
                 podeModerar={podeModerarComentarios}
                 onAdicionar={handleAdicionarComentario}
                 onEditar={handleEditarComentario}
