@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { ChevronDown, Tag, Users, X } from "lucide-react";
 
+import { TarefaResponsaveisField } from "@/components/tarefas/tarefa-responsaveis-field";
 import type {
   CategoriaTarefa,
   PrioridadeTarefa,
@@ -22,7 +23,7 @@ type Props = {
     values: Omit<TarefaFilhaDraft, "idLocal" | "status"> & {
       status?: TarefaFilhaDraft["status"];
     },
-  ) => void;
+  ) => void | Promise<void>;
   equipes: EquipeOption[];
   categorias: CategoriaTarefa[];
   usuarios: UsuarioResumoTarefa[];
@@ -67,17 +68,72 @@ function criarEstadoInicial(
   };
 }
 
-function formatarNomeCurto(nome?: string | null) {
-  if (!nome) return "Usuário";
+function SelectField({
+  label,
+  required,
+  value,
+  onChange,
+  children,
+  disabled,
+  error,
+  icon,
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  disabled?: boolean;
+  error?: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label
+        className="mb-2 flex items-center gap-2 text-sm font-medium"
+        style={{ color: "var(--text-2)" }}
+      >
+        {icon ? <span style={{ color: "var(--text-4)" }}>{icon}</span> : null}
+        <span>
+          {label}
+          {required ? <span style={{ color: "var(--danger)" }}> *</span> : null}
+        </span>
+      </label>
 
-  const partes = nome.trim().split(/\s+/);
-  if (partes.length === 1) return partes[0];
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          disabled={disabled}
+          className="w-full appearance-none rounded-2xl px-4 py-3 pr-10 text-sm outline-none transition"
+          style={{
+            backgroundColor: "var(--input)",
+            border: "1px solid var(--border)",
+            color: "var(--text-1)",
+            opacity: disabled ? 0.65 : 1,
+          }}
+        >
+          {children}
+        </select>
 
-  return `${partes[0]} ${partes[1]}`;
+        <span
+          className="pointer-events-none absolute inset-y-0 right-3 flex items-center"
+          style={{ color: "var(--text-4)" }}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </span>
+      </div>
+
+      {error ? (
+        <p className="mt-2 text-xs" style={{ color: "var(--danger)" }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
-export function TarefaFilhaQuickModal({
-  open,
+function TarefaFilhaQuickModalContent({
   onClose,
   onSubmit,
   equipes,
@@ -86,7 +142,7 @@ export function TarefaFilhaQuickModal({
   equipePredefinidaId,
   bloquearEquipe = false,
   initialValues,
-}: Props) {
+}: Omit<Props, "open">) {
   const estadoInicial = useMemo(
     () => criarEstadoInicial(equipePredefinidaId, initialValues),
     [equipePredefinidaId, initialValues],
@@ -106,33 +162,12 @@ export function TarefaFilhaQuickModal({
     );
   }, [categorias, form.equipeId]);
 
-  const usuariosSelecionados = useMemo(
-    () =>
-      usuarios.filter((usuario) => form.responsavelIds.includes(usuario.id)),
-    [usuarios, form.responsavelIds],
-  );
-
   function atualizarCampo<K extends keyof FormState>(
     campo: K,
     valor: FormState[K],
   ) {
     setForm((atual) => ({ ...atual, [campo]: valor }));
     setErrors((atual) => ({ ...atual, [campo]: undefined }));
-  }
-
-  function toggleResponsavel(usuarioId: string) {
-    setForm((atual) => {
-      const existe = atual.responsavelIds.includes(usuarioId);
-
-      return {
-        ...atual,
-        responsavelIds: existe
-          ? atual.responsavelIds.filter((id) => id !== usuarioId)
-          : [...atual.responsavelIds, usuarioId],
-      };
-    });
-
-    setErrors((atual) => ({ ...atual, responsavelIds: undefined }));
   }
 
   function validar(): FormErrors {
@@ -161,7 +196,7 @@ export function TarefaFilhaQuickModal({
     return nextErrors;
   }
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const nextErrors = validar();
@@ -171,7 +206,7 @@ export function TarefaFilhaQuickModal({
       return;
     }
 
-    onSubmit({
+    await onSubmit({
       titulo: form.titulo.trim(),
       descricao: form.descricao.trim() || null,
       equipeId: form.equipeId,
@@ -186,18 +221,18 @@ export function TarefaFilhaQuickModal({
     onClose();
   }
 
-  if (!open) {
-    return null;
-  }
-
   return (
     <div
       className="overlay-backdrop fixed inset-0 z-[100] flex items-center justify-center p-3 md:p-5"
       role="dialog"
       aria-modal="true"
       aria-label="Adicionar tarefa filha"
+      onClick={(event) => event.stopPropagation()}
     >
-      <div className="panel-theme relative w-full max-w-3xl overflow-hidden rounded-[var(--radius-3xl)] shadow-2xl">
+      <div
+        className="panel-theme relative w-full max-w-3xl overflow-hidden rounded-[var(--radius-3xl)] shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
         <header
           className="flex items-start justify-between gap-4 border-b px-4 py-4 md:px-5"
           style={{ borderColor: "var(--border)" }}
@@ -219,7 +254,10 @@ export function TarefaFilhaQuickModal({
 
           <button
             type="button"
-            onClick={onClose}
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
             className="button-neutral inline-flex h-10 w-10 items-center justify-center rounded-full p-0"
             aria-label="Fechar modal"
           >
@@ -244,7 +282,7 @@ export function TarefaFilhaQuickModal({
                 value={form.titulo}
                 onChange={(event) => atualizarCampo("titulo", event.target.value)}
                 placeholder="Ex.: Definir cronograma com a equipe"
-                className="w-full rounded-2xl px-4 py-3 text-sm"
+                className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
                 style={{
                   backgroundColor: "var(--input)",
                   border: "1px solid var(--border)",
@@ -272,7 +310,7 @@ export function TarefaFilhaQuickModal({
                 }
                 rows={3}
                 placeholder="Detalhe rapidamente o que precisa ser feito"
-                className="w-full rounded-2xl px-4 py-3 text-sm"
+                className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
                 style={{
                   backgroundColor: "var(--input)",
                   border: "1px solid var(--border)",
@@ -281,100 +319,53 @@ export function TarefaFilhaQuickModal({
               />
             </div>
 
-            <div>
-              <label
-                className="mb-2 block text-sm font-medium"
-                style={{ color: "var(--text-2)" }}
-              >
-                Equipe <span style={{ color: "var(--danger)" }}>*</span>
-              </label>
-              <select
-                value={form.equipeId}
-                onChange={(event) => atualizarCampo("equipeId", event.target.value)}
-                disabled={bloquearEquipe}
-                className="w-full rounded-2xl px-4 py-3 text-sm"
-                style={{
-                  backgroundColor: "var(--input)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-1)",
-                }}
-              >
-                <option value="">Selecione</option>
-                {equipes.map((equipe) => (
-                  <option key={equipe.id} value={equipe.id}>
-                    {equipe.nome}
-                  </option>
-                ))}
-              </select>
-              {errors.equipeId ? (
-                <p className="mt-2 text-xs" style={{ color: "var(--danger)" }}>
-                  {errors.equipeId}
-                </p>
-              ) : null}
-            </div>
+            <SelectField
+              label="Equipe"
+              required
+              value={form.equipeId}
+              onChange={(value) => atualizarCampo("equipeId", value)}
+              disabled={bloquearEquipe}
+              error={errors.equipeId}
+              icon={<Users className="h-4 w-4" />}
+            >
+              <option value="">Selecione</option>
+              {equipes.map((equipe) => (
+                <option key={equipe.id} value={equipe.id}>
+                  {equipe.nome}
+                </option>
+              ))}
+            </SelectField>
 
-            <div>
-              <label
-                className="mb-2 block text-sm font-medium"
-                style={{ color: "var(--text-2)" }}
-              >
-                Categoria <span style={{ color: "var(--danger)" }}>*</span>
-              </label>
-              <select
-                value={form.categoriaId}
-                onChange={(event) =>
-                  atualizarCampo("categoriaId", event.target.value)
-                }
-                className="w-full rounded-2xl px-4 py-3 text-sm"
-                style={{
-                  backgroundColor: "var(--input)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-1)",
-                }}
-              >
-                <option value="">Selecione</option>
-                {categoriasFiltradas.map((categoria) => (
-                  <option key={categoria.id} value={categoria.id}>
-                    {categoria.nome}
-                  </option>
-                ))}
-              </select>
-              {errors.categoriaId ? (
-                <p className="mt-2 text-xs" style={{ color: "var(--danger)" }}>
-                  {errors.categoriaId}
-                </p>
-              ) : null}
-            </div>
+            <SelectField
+              label="Categoria"
+              required
+              value={form.categoriaId}
+              onChange={(value) => atualizarCampo("categoriaId", value)}
+              error={errors.categoriaId}
+              icon={<Tag className="h-4 w-4" />}
+            >
+              <option value="">Selecione</option>
+              {categoriasFiltradas.map((categoria) => (
+                <option key={categoria.id} value={categoria.id}>
+                  {categoria.nome}
+                </option>
+              ))}
+            </SelectField>
 
-            <div>
-              <label
-                className="mb-2 block text-sm font-medium"
-                style={{ color: "var(--text-2)" }}
-              >
-                Prioridade
-              </label>
-              <select
-                value={form.prioridade}
-                onChange={(event) =>
-                  atualizarCampo(
-                    "prioridade",
-                    event.target.value as PrioridadeTarefa,
-                  )
-                }
-                className="w-full rounded-2xl px-4 py-3 text-sm"
-                style={{
-                  backgroundColor: "var(--input)",
-                  border: "1px solid var(--border)",
-                  color: "var(--text-1)",
-                }}
-              >
-                {PRIORIDADES.map((prioridade) => (
-                  <option key={prioridade.value} value={prioridade.value}>
-                    {prioridade.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SelectField
+              label="Prioridade"
+              value={form.prioridade}
+              onChange={(value) =>
+                atualizarCampo("prioridade", value as PrioridadeTarefa)
+              }
+              icon={<Tag className="h-4 w-4" />}
+            >
+              {PRIORIDADES.map((prioridade) => (
+                <option key={prioridade.value} value={prioridade.value}>
+                  {prioridade.label}
+                </option>
+              ))}
+            </SelectField>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
@@ -390,7 +381,7 @@ export function TarefaFilhaQuickModal({
                   onChange={(event) =>
                     atualizarCampo("dataEntrega", event.target.value)
                   }
-                  className="w-full rounded-2xl px-4 py-3 text-sm"
+                  className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
                   style={{
                     backgroundColor: "var(--input)",
                     border: "1px solid var(--border)",
@@ -417,7 +408,7 @@ export function TarefaFilhaQuickModal({
                   onChange={(event) =>
                     atualizarCampo("horaEntrega", event.target.value)
                   }
-                  className="w-full rounded-2xl px-4 py-3 text-sm"
+                  className="w-full rounded-2xl px-4 py-3 text-sm outline-none transition"
                   style={{
                     backgroundColor: "var(--input)",
                     border: "1px solid var(--border)",
@@ -428,60 +419,15 @@ export function TarefaFilhaQuickModal({
             </div>
 
             <div className="md:col-span-2">
-              <label
-                className="mb-2 block text-sm font-medium"
-                style={{ color: "var(--text-2)" }}
-              >
-                Responsáveis <span style={{ color: "var(--danger)" }}>*</span>
-              </label>
-
-              {usuariosSelecionados.length > 0 ? (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {usuariosSelecionados.map((usuario) => (
-                    <span
-                      key={usuario.id}
-                      className="badge-neutral inline-flex items-center rounded-full px-3 py-1 text-xs"
-                    >
-                      {formatarNomeCurto(usuario.nome)}
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              <div
-                className="max-h-44 overflow-y-auto rounded-2xl p-2"
-                style={{
-                  border: "1px solid var(--border)",
-                  backgroundColor: "var(--surface-0)",
-                }}
-              >
-                <div className="space-y-1">
-                  {usuarios.map((usuario) => {
-                    const checked = form.responsavelIds.includes(usuario.id);
-
-                    return (
-                      <label
-                        key={usuario.id}
-                        className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm"
-                        style={{
-                          backgroundColor: checked
-                            ? "var(--surface-2)"
-                            : "transparent",
-                          color: "var(--text-2)",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleResponsavel(usuario.id)}
-                        />
-                        <span>{usuario.nome}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
+              <TarefaResponsaveisField
+                usuarios={usuarios}
+                value={form.responsavelIds}
+                onChange={(value) => atualizarCampo("responsavelIds", value)}
+                disabled={false}
+                label="Responsáveis"
+                description="Selecione ao menos um responsável para esta tarefa filha."
+                minCount={1}
+              />
               {errors.responsavelIds ? (
                 <p className="mt-2 text-xs" style={{ color: "var(--danger)" }}>
                   {errors.responsavelIds}
@@ -513,4 +459,18 @@ export function TarefaFilhaQuickModal({
       </div>
     </div>
   );
+}
+
+export function TarefaFilhaQuickModal(props: Props) {
+  if (!props.open) {
+    return null;
+  }
+
+  const modalKey = JSON.stringify({
+    equipePredefinidaId: props.equipePredefinidaId ?? null,
+    bloquearEquipe: props.bloquearEquipe ?? false,
+    initialValues: props.initialValues ?? null,
+  });
+
+  return <TarefaFilhaQuickModalContent key={modalKey} {...props} />;
 }

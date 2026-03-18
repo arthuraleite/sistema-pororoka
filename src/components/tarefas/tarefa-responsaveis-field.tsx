@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Plus, Search, X } from "lucide-react";
+import { Check, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { UsuarioResumoTarefa } from "@/types/tarefas/tarefas.types";
@@ -28,13 +28,13 @@ function iniciais(nome: string) {
 function Avatar({
   nome,
   avatarUrl,
-  size = "md",
+  size = "sm",
 }: {
   nome: string;
   avatarUrl?: string | null;
   size?: "sm" | "md";
 }) {
-  const sizeClass = size === "sm" ? "h-8 w-8 text-[10px]" : "h-9 w-9 text-xs";
+  const sizeClass = size === "md" ? "h-8 w-8 text-xs" : "h-7 w-7 text-[10px]";
 
   if (avatarUrl) {
     return (
@@ -44,7 +44,7 @@ function Avatar({
           alt={nome}
           fill
           className="object-cover"
-          sizes={size === "sm" ? "32px" : "36px"}
+          sizes={size === "md" ? "32px" : "28px"}
         />
       </span>
     );
@@ -90,6 +90,7 @@ export function TarefaResponsaveisField({
     function handleClickOutside(event: MouseEvent) {
       if (!containerRef.current?.contains(event.target as Node)) {
         setOpen(false);
+        setBusca("");
       }
     }
 
@@ -175,38 +176,222 @@ export function TarefaResponsaveisField({
             {description}
           </p>
         </div>
-      </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        {selecionados.length > 0 ? (
-          selecionados.map((usuario) => (
-            <button
-              key={usuario.id}
-              type="button"
-              onClick={() => remover(usuario.id)}
-              disabled={disabled}
-              className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 transition"
+        <div className="relative overflow-visible">
+          <button
+            type="button"
+            onClick={() => !disabled && setOpen((current) => !current)}
+            disabled={disabled}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition"
+            style={{
+              backgroundColor: "var(--surface-0)",
+              border: "1px solid var(--border)",
+              color: "var(--text-2)",
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
+            {open ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+            <span>{open ? "Fechar" : "Adicionar"}</span>
+          </button>
+
+          {open ? (
+            <div
+              className="absolute bottom-full right-0 z-40 mb-2 w-[min(96vw,720px)] overflow-hidden rounded-2xl"
               style={{
                 backgroundColor: "var(--surface-0)",
                 border: "1px solid var(--border)",
-                color: "var(--text-2)",
+                boxShadow: "var(--shadow-soft)",
               }}
-              title={
-                disabled
-                  ? usuario.nome
-                  : minCount === 1 && value.length <= 1
-                    ? `${usuario.nome} (ao menos um responsável é obrigatório)`
-                    : `Remover ${usuario.nome}`
-              }
+            >
+              <div
+                className="flex items-center justify-between gap-3 px-3 py-2"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <div>
+                  <h4
+                    className="text-sm font-medium"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    Selecionar responsáveis
+                  </h4>
+                  <p className="mt-0.5 text-xs" style={{ color: "var(--text-4)" }}>
+                    {selecionados.length} selecionado(s)
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    setBusca("");
+                  }}
+                  className="text-xs font-medium transition"
+                  style={{ color: "var(--text-4)" }}
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="max-h-[300px] space-y-2 overflow-y-auto p-2.5">
+                <div
+                  className="flex items-center gap-2 rounded-xl px-3 py-1.5"
+                  style={{
+                    backgroundColor: "var(--input)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  <Search className="h-4 w-4" style={{ color: "var(--text-4)" }} />
+                  <input
+                    type="text"
+                    value={busca}
+                    onChange={(event) => setBusca(event.target.value)}
+                    placeholder="Buscar por nome ou email"
+                    className="w-full bg-transparent text-sm outline-none"
+                    style={{ color: "var(--text-1)" }}
+                  />
+                </div>
+
+                {selecionadosFiltrados.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <div
+                      className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                      style={{ color: "var(--text-4)" }}
+                    >
+                      Selecionados
+                    </div>
+
+                    <div className="space-y-1">
+                      {selecionadosFiltrados.map((usuario) => (
+                        <button
+                          key={usuario.id}
+                          type="button"
+                          onClick={() => toggle(usuario.id)}
+                          className="interactive-surface flex w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left transition"
+                        >
+                          <Avatar
+                            nome={usuario.nome}
+                            avatarUrl={usuario.avatarUrl}
+                            size="md"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className="block truncate text-sm"
+                              style={{ color: "var(--text-1)" }}
+                            >
+                              {usuario.nome}
+                            </span>
+                            <span
+                              className="block truncate text-xs"
+                              style={{ color: "var(--text-4)" }}
+                            >
+                              {usuario.email}
+                            </span>
+                          </span>
+
+                          <Check
+                            className="h-4 w-4 shrink-0"
+                            style={{ color: "var(--text-3)" }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {disponiveisFiltrados.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <div
+                      className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                      style={{ color: "var(--text-4)" }}
+                    >
+                      Usuários
+                    </div>
+
+                    <div className="space-y-1">
+                      {disponiveisFiltrados.map((usuario) => (
+                        <button
+                          key={usuario.id}
+                          type="button"
+                          onClick={() => adicionar(usuario.id)}
+                          className="interactive-surface flex w-full items-center gap-3 rounded-xl px-3 py-1.5 text-left transition"
+                        >
+                          <Avatar
+                            nome={usuario.nome}
+                            avatarUrl={usuario.avatarUrl}
+                            size="md"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span
+                              className="block truncate text-sm"
+                              style={{ color: "var(--text-1)" }}
+                            >
+                              {usuario.nome}
+                            </span>
+                            <span
+                              className="block truncate text-xs"
+                              style={{ color: "var(--text-4)" }}
+                            >
+                              {usuario.email}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {selecionadosFiltrados.length === 0 &&
+                disponiveisFiltrados.length === 0 ? (
+                  <div
+                    className="rounded-2xl border border-dashed px-4 py-3 text-sm"
+                    style={{
+                      borderColor: "var(--border)",
+                      backgroundColor: "var(--surface-1)",
+                      color: "var(--text-4)",
+                    }}
+                  >
+                    Nenhum usuário encontrado.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {selecionados.length > 0 ? (
+          selecionados.map((usuario) => (
+            <div
+              key={usuario.id}
+              className="inline-flex max-w-full items-center gap-2 rounded-full px-3 py-2"
+              style={{
+                backgroundColor: "var(--surface-0)",
+                border: "1px solid var(--border)",
+              }}
             >
               <Avatar nome={usuario.nome} avatarUrl={usuario.avatarUrl} size="sm" />
-              <span className="max-w-[140px] truncate text-sm">
+
+              <span
+                className="max-w-[180px] truncate text-sm"
+                style={{ color: "var(--text-2)" }}
+                title={usuario.nome}
+              >
                 {formatarNomeCurto(usuario.nome)}
               </span>
+
               {!disabled ? (
-                <X className="h-3.5 w-3.5" style={{ color: "var(--text-4)" }} />
+                <button
+                  type="button"
+                  onClick={() => remover(usuario.id)}
+                  className="transition"
+                  style={{ color: "var(--text-4)" }}
+                  aria-label={`Remover ${usuario.nome}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               ) : null}
-            </button>
+            </div>
           ))
         ) : (
           <div
@@ -220,154 +405,7 @@ export function TarefaResponsaveisField({
             Nenhum responsável selecionado.
           </div>
         )}
-
-        <button
-          type="button"
-          onClick={() => !disabled && setOpen((v) => !v)}
-          disabled={disabled}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-full px-3 text-sm font-medium transition"
-          style={{
-            backgroundColor: "var(--surface-0)",
-            border: "1px solid var(--border)",
-            color: "var(--text-2)",
-            opacity: disabled ? 0.6 : 1,
-          }}
-        >
-          <Plus className="h-4 w-4" />
-          <span>Adicionar</span>
-        </button>
       </div>
-
-      {open ? (
-        <div
-          className="mt-4 overflow-hidden rounded-2xl"
-          style={{
-            backgroundColor: "var(--surface-0)",
-            border: "1px solid var(--border)",
-            boxShadow: "var(--shadow-soft)",
-          }}
-        >
-          <div
-            className="flex items-center gap-2 px-3 py-3"
-            style={{ borderBottom: "1px solid var(--border)" }}
-          >
-            <Search className="h-4 w-4" style={{ color: "var(--text-4)" }} />
-            <input
-              type="text"
-              value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-              placeholder="Buscar por nome ou email"
-              className="w-full bg-transparent text-sm outline-none"
-              style={{ color: "var(--text-1)" }}
-            />
-          </div>
-
-          <div className="max-h-72 overflow-y-auto p-2">
-            {selecionadosFiltrados.length > 0 ? (
-              <>
-                <div
-                  className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
-                  style={{ color: "var(--text-4)" }}
-                >
-                  Selecionados
-                </div>
-
-                <div className="space-y-1 pb-2">
-                  {selecionadosFiltrados.map((usuario) => (
-                    <button
-                      key={usuario.id}
-                      type="button"
-                      onClick={() => toggle(usuario.id)}
-                      className="interactive-surface flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
-                    >
-                      <Avatar
-                        nome={usuario.nome}
-                        avatarUrl={usuario.avatarUrl}
-                        size="md"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className="block truncate text-sm"
-                          style={{ color: "var(--text-1)" }}
-                        >
-                          {usuario.nome}
-                        </span>
-                        <span
-                          className="block truncate text-xs"
-                          style={{ color: "var(--text-4)" }}
-                        >
-                          {usuario.email}
-                        </span>
-                      </span>
-                      <span
-                        className="rounded-full px-2 py-1 text-[11px] font-medium"
-                        style={{
-                          backgroundColor: "var(--surface-2)",
-                          color: "var(--text-3)",
-                          border: "1px solid var(--border)",
-                        }}
-                      >
-                        Selecionado
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : null}
-
-            {disponiveisFiltrados.length > 0 ? (
-              <>
-                <div
-                  className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
-                  style={{ color: "var(--text-4)" }}
-                >
-                  Disponíveis
-                </div>
-
-                <div className="space-y-1">
-                  {disponiveisFiltrados.map((usuario) => (
-                    <button
-                      key={usuario.id}
-                      type="button"
-                      onClick={() => adicionar(usuario.id)}
-                      className="interactive-surface flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
-                    >
-                      <Avatar
-                        nome={usuario.nome}
-                        avatarUrl={usuario.avatarUrl}
-                        size="md"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className="block truncate text-sm"
-                          style={{ color: "var(--text-1)" }}
-                        >
-                          {usuario.nome}
-                        </span>
-                        <span
-                          className="block truncate text-xs"
-                          style={{ color: "var(--text-4)" }}
-                        >
-                          {usuario.email}
-                        </span>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            ) : null}
-
-            {selecionadosFiltrados.length === 0 && disponiveisFiltrados.length === 0 ? (
-              <div
-                className="px-3 py-4 text-sm"
-                style={{ color: "var(--text-4)" }}
-              >
-                Nenhum usuário encontrado.
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

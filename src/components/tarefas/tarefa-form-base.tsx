@@ -1,10 +1,12 @@
 "use client";
 
-import { CalendarDays, Clock3, FolderKanban, Tag, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { TarefaResponsaveisField } from "./tarefa-responsaveis-field";
+import Image from "next/image";
+import { CalendarDays, Clock3, FolderKanban, Search, Tag, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
 import { criarCategoriaTarefa } from "@/actions/tarefas/criar-categoria-tarefa";
 import { TarefaLinksField } from "@/components/tarefas/tarefa-links-field";
+import { TarefaResponsaveisField } from "@/components/tarefas/tarefa-responsaveis-field";
 import type {
   CategoriaTarefa,
   EscopoObjetivo,
@@ -73,6 +75,12 @@ type Props = {
   }) => void | Promise<void>;
   submitLabel?: string;
   formId?: string;
+  hideInternalSubmit?: boolean;
+  hideProjetoWhenEscopoEquipe?: boolean;
+  lockEquipeSelection?: boolean;
+  lockTarefaPaiSelection?: boolean;
+  onTituloChange?: (titulo: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 const prioridades: Array<{ value: PrioridadeTarefa; label: string }> = [
@@ -98,7 +106,7 @@ const escopoObjetivoOptions: Array<{ value: EscopoObjetivo; label: string }> = [
 
 function inputClass(disabled = false) {
   return [
-    "h-11 w-full rounded-xl px-3.5 text-sm outline-none transition",
+    "h-11 w-full rounded-2xl px-4 text-sm outline-none transition",
     disabled ? "cursor-not-allowed opacity-60" : "",
   ].join(" ");
 }
@@ -110,21 +118,16 @@ function textAreaClass(disabled = false) {
   ].join(" ");
 }
 
-function obrigatorioLabel(obrigatorio?: boolean) {
-  if (!obrigatorio) return null;
-  return <span style={{ color: "var(--danger)" }}> *</span>;
-}
-
 function FieldLabel({
   icon,
   children,
 }: {
-  icon?: ReactNode;
-  children: ReactNode;
+  icon?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <label
-      className="mb-1.5 flex items-center gap-2 text-[13px] font-medium"
+      className="mb-2 flex items-center gap-2 text-sm font-medium"
       style={{ color: "var(--text-2)" }}
     >
       {icon ? <span style={{ color: "var(--text-4)" }}>{icon}</span> : null}
@@ -144,13 +147,13 @@ function DropdownField({
   children,
 }: {
   label: string;
-  icon?: ReactNode;
+  icon?: React.ReactNode;
   value?: string | null;
   placeholder: string;
   open: boolean;
   onToggle: () => void;
   disabled?: boolean;
-  children?: ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <div className="relative">
@@ -191,7 +194,7 @@ function DropdownOption({
   children,
   onClick,
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -225,8 +228,14 @@ export function TarefaFormBase({
   onSubmit,
   submitLabel,
   formId,
+  hideInternalSubmit = false,
+  hideProjetoWhenEscopoEquipe = false,
+  lockEquipeSelection = false,
+  lockTarefaPaiSelection = false,
+  onTituloChange,
+  onDirtyChange,
 }: Props) {
-  const readonly = false;
+  const readonly = mode === "view";
 
   const [tipoAtual, setTipoAtual] = useState<TipoTarefa>(tipo);
   const [escopoObjetivo, setEscopoObjetivo] = useState<EscopoObjetivo>(
@@ -252,6 +261,7 @@ export function TarefaFormBase({
   );
   const [links, setLinks] = useState<LinkItem[]>(initialValues?.links ?? []);
   const [submitting, setSubmitting] = useState(false);
+
   const [categoriasCriadasLocalmente, setCategoriasCriadasLocalmente] = useState<
     CategoriaTarefa[]
   >([]);
@@ -260,13 +270,9 @@ export function TarefaFormBase({
   const [mostrarTarefaPaiMenu, setMostrarTarefaPaiMenu] = useState(false);
   const [mostrarPrioridadeMenu, setMostrarPrioridadeMenu] = useState(false);
   const [mostrarStatusMenu, setMostrarStatusMenu] = useState(false);
-  const [mostrarCategoriaMenu, setMostrarCategoriaMenu] = useState(false);
-  // const [mostrarSugestoesResponsaveis, setMostrarSugestoesResponsaveis] =
-  //   useState(false);
   const [mostrarEscopoMenu, setMostrarEscopoMenu] = useState(false);
-  const [linksAbertos, setLinksAbertos] = useState(
-    (initialValues?.links?.length ?? 0) > 0,
-  );
+  const [mostrarCategoriaPopover, setMostrarCategoriaPopover] = useState(false);
+
   const [modalCategoriaOpen, setModalCategoriaOpen] = useState(false);
   const [novaCategoriaNome, setNovaCategoriaNome] = useState("");
   const [novaCategoriaDescricao, setNovaCategoriaDescricao] = useState("");
@@ -276,11 +282,47 @@ export function TarefaFormBase({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (
-      tipoAtual === "pai" &&
-      !canSelectObjetivoGlobal &&
-      escopoObjetivo !== "equipe"
-    ) {
+    onTituloChange?.(titulo);
+  }, [titulo, onTituloChange]);
+
+  useEffect(() => {
+    const dirty =
+      (initialValues?.titulo ?? "") !== titulo ||
+      (initialValues?.descricao ?? "") !== descricao ||
+      (initialValues?.tarefaPaiId ?? "") !== tarefaPaiId ||
+      (initialValues?.equipeId ?? "") !== equipeId ||
+      (initialValues?.categoriaId ?? "") !== categoriaId ||
+      (initialValues?.projetoId ?? "") !== projetoId ||
+      (initialValues?.escopoObjetivo ?? null) !== escopoObjetivo ||
+      (initialValues?.prioridade ?? "") !== prioridade ||
+      (initialValues?.status ?? "a_fazer") !== status ||
+      (initialValues?.dataEntrega ?? "") !== dataEntrega ||
+      (initialValues?.horaEntrega ?? "") !== horaEntrega ||
+      JSON.stringify(initialValues?.responsavelIds ?? []) !==
+        JSON.stringify(responsavelIds) ||
+      JSON.stringify(initialValues?.links ?? []) !== JSON.stringify(links);
+
+    onDirtyChange?.(dirty);
+  }, [
+    titulo,
+    descricao,
+    tarefaPaiId,
+    equipeId,
+    categoriaId,
+    projetoId,
+    escopoObjetivo,
+    prioridade,
+    status,
+    dataEntrega,
+    horaEntrega,
+    responsavelIds,
+    links,
+    initialValues,
+    onDirtyChange,
+  ]);
+
+  useEffect(() => {
+    if (tipoAtual === "pai" && !canSelectObjetivoGlobal && escopoObjetivo !== "equipe") {
       setEscopoObjetivo("equipe");
     }
   }, [tipoAtual, canSelectObjetivoGlobal, escopoObjetivo]);
@@ -313,10 +355,11 @@ export function TarefaFormBase({
         setMostrarTarefaPaiMenu(false);
         setMostrarPrioridadeMenu(false);
         setMostrarStatusMenu(false);
-        setMostrarCategoriaMenu(false);
         setMostrarEscopoMenu(false);
+        setMostrarCategoriaPopover(false);
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
@@ -333,13 +376,21 @@ export function TarefaFormBase({
     return categoriasMescladas.filter((categoria) => categoria.equipeId === equipeId);
   }, [categoriasMescladas, equipeId]);
 
+  const categoriaSelecionada = useMemo(
+    () => categoriasMescladas.find((item) => item.id === categoriaId) ?? null,
+    [categoriasMescladas, categoriaId],
+  );
+
   const categoriasFiltradas = useMemo(() => {
     const termo = categoriaBusca.trim().toLowerCase();
-    if (!termo) return categoriasDaEquipe.slice(0, 7);
+
     return categoriasDaEquipe
-      .filter((categoria) => categoria.nome.toLowerCase().includes(termo))
-      .slice(0, 7);
-  }, [categoriasDaEquipe, categoriaBusca]);
+      .filter((categoria) => categoria.id !== categoriaId)
+      .filter((categoria) => {
+        if (!termo) return true;
+        return categoria.nome.toLowerCase().includes(termo);
+      });
+  }, [categoriasDaEquipe, categoriaBusca, categoriaId]);
 
   const equipeSelecionada = useMemo(
     () => equipes.find((item) => item.id === equipeId) ?? null,
@@ -352,28 +403,19 @@ export function TarefaFormBase({
   );
 
   const escopoSelecionado = useMemo(
-    () =>
-      escopoObjetivoOptions.find((item) => item.value === escopoObjetivo) ?? null,
+    () => escopoObjetivoOptions.find((item) => item.value === escopoObjetivo) ?? null,
     [escopoObjetivo],
   );
 
   const usuariosElegiveis = useMemo(() => {
     if (tipoAtual === "pai") {
       return usuarios.filter((usuario) =>
-        ["admin_supremo", "coordenador_geral", "coordenador_equipe"].includes(
-          usuario.perfil,
-        ),
+        ["admin_supremo", "coordenador_geral", "coordenador_equipe", "assistente", "gestor_financeiro"].includes(usuario.perfil),
       );
     }
+
     return usuarios.filter((usuario) => usuario.perfil !== "analista_financeiro");
   }, [tipoAtual, usuarios]);
-
-  const equipeObrigatoria =
-    tipoAtual === "filha" ||
-    tipoAtual === "orfa" ||
-    (tipoAtual === "pai" && escopoObjetivo === "equipe");
-
-  const categoriaObrigatoria = tipoAtual === "filha" || tipoAtual === "orfa";
 
   async function handleCriarCategoria() {
     setErroCategoria(null);
@@ -406,16 +448,16 @@ export function TarefaFormBase({
           ? current
           : [...current, resultado.data!],
       );
+
       setCategoriaId(resultado.data.id);
-      setCategoriaBusca(resultado.data.nome);
+      setCategoriaBusca("");
       setNovaCategoriaNome("");
       setNovaCategoriaDescricao("");
       setModalCategoriaOpen(false);
-      setMostrarCategoriaMenu(false);
+      setMostrarCategoriaPopover(false);
+      setErroCategoria(null);
     } catch (error) {
-      setErroCategoria(
-        error instanceof Error ? error.message : "Erro ao criar categoria.",
-      );
+      setErroCategoria(error instanceof Error ? error.message : "Erro ao criar categoria.");
     } finally {
       setSalvandoCategoria(false);
     }
@@ -473,8 +515,8 @@ export function TarefaFormBase({
   const resolvedSubmitLabel =
     submitLabel ?? (mode === "create" ? "Salvar" : mode === "edit" ? "Atualizar" : "Fechar");
 
-  const mostrarCampoEquipe =
-    allowEquipe && (tipoAtual !== "pai" || escopoObjetivo === "equipe");
+  const mostrarCampoEquipe = allowEquipe && (tipoAtual !== "pai" || escopoObjetivo === "equipe");
+  const mostrarProjeto = allowProjeto && tipoAtual === "pai" && !(hideProjetoWhenEscopoEquipe && escopoObjetivo === "equipe");
 
   return (
     <>
@@ -517,10 +559,7 @@ export function TarefaFormBase({
           >
             <div className="space-y-5">
               <div>
-                <FieldLabel>
-                  {tipoAtual === "pai" ? "Título do objetivo" : "Título"}
-                  {obrigatorioLabel(true)}
-                </FieldLabel>
+                <FieldLabel>{tipoAtual === "pai" ? "Título do objetivo" : "Título"}</FieldLabel>
                 <input
                   type="text"
                   value={titulo}
@@ -540,7 +579,7 @@ export function TarefaFormBase({
                 />
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {tipoAtual === "pai" && allowEscopoObjetivo ? (
                   <DropdownField
                     label="Escopo"
@@ -572,36 +611,53 @@ export function TarefaFormBase({
                 ) : null}
 
                 {tipoAtual === "filha" ? (
-                  <DropdownField
-                    label="Objetivo-pai *"
-                    icon={<FolderKanban className="h-4 w-4" />}
-                    value={tarefaPaiSelecionada?.titulo ?? null}
-                    placeholder="Selecione o objetivo"
-                    open={mostrarTarefaPaiMenu && !readonly}
-                    onToggle={() => !readonly && setMostrarTarefaPaiMenu((v) => !v)}
-                    disabled={readonly}
-                  >
-                    <div className="max-h-56 overflow-y-auto p-1.5">
-                      {tarefasPaiOptions.map((item) => (
-                        <DropdownOption
-                          key={item.id}
-                          onClick={() => {
-                            setTarefaPaiId(item.id);
-                            setMostrarTarefaPaiMenu(false);
-                          }}
-                        >
-                          {item.titulo}
-                        </DropdownOption>
-                      ))}
+                  lockTarefaPaiSelection ? (
+                    <div>
+                      <FieldLabel icon={<FolderKanban className="h-4 w-4" />}>
+                        Objetivo-pai
+                      </FieldLabel>
+                      <input
+                        type="text"
+                        value={tarefaPaiSelecionada?.titulo ?? ""}
+                        readOnly
+                        className={inputClass(true)}
+                        style={{
+                          backgroundColor: "var(--input)",
+                          border: "1px solid var(--border)",
+                          color: "var(--text-1)",
+                        }}
+                      />
                     </div>
-                  </DropdownField>
+                  ) : (
+                    <DropdownField
+                      label="Objetivo-pai"
+                      icon={<FolderKanban className="h-4 w-4" />}
+                      value={tarefaPaiSelecionada?.titulo ?? null}
+                      placeholder="Selecione o objetivo"
+                      open={mostrarTarefaPaiMenu && !readonly}
+                      onToggle={() => !readonly && setMostrarTarefaPaiMenu((v) => !v)}
+                      disabled={readonly}
+                    >
+                      <div className="max-h-56 overflow-y-auto p-1.5">
+                        {tarefasPaiOptions.map((item) => (
+                          <DropdownOption
+                            key={item.id}
+                            onClick={() => {
+                              setTarefaPaiId(item.id);
+                              setMostrarTarefaPaiMenu(false);
+                            }}
+                          >
+                            {item.titulo}
+                          </DropdownOption>
+                        ))}
+                      </div>
+                    </DropdownField>
+                  )
                 ) : null}
 
-                {allowProjeto && tipoAtual === "pai" ? (
+                {mostrarProjeto ? (
                   <div>
-                    <FieldLabel icon={<FolderKanban className="h-4 w-4" />}>
-                      Projeto
-                    </FieldLabel>
+                    <FieldLabel icon={<FolderKanban className="h-4 w-4" />}>Projeto</FieldLabel>
                     <input
                       type="text"
                       value={projetoId}
@@ -619,11 +675,9 @@ export function TarefaFormBase({
                 ) : null}
 
                 {mostrarCampoEquipe ? (
-                  equipes.length <= 1 ? (
+                  lockEquipeSelection || equipes.length <= 1 ? (
                     <div>
-                      <FieldLabel icon={<Users className="h-4 w-4" />}>
-                        Equipe{obrigatorioLabel(equipeObrigatoria)}
-                      </FieldLabel>
+                      <FieldLabel icon={<Users className="h-4 w-4" />}>Equipe</FieldLabel>
                       <input
                         type="text"
                         value={equipeSelecionada?.nome ?? equipes[0]?.nome ?? ""}
@@ -638,7 +692,7 @@ export function TarefaFormBase({
                     </div>
                   ) : (
                     <DropdownField
-                      label={`Equipe${equipeObrigatoria ? " *" : ""}`}
+                      label="Equipe"
                       icon={<Users className="h-4 w-4" />}
                       value={equipeSelecionada?.nome ?? null}
                       placeholder="Selecione a equipe"
@@ -667,113 +721,130 @@ export function TarefaFormBase({
 
                 {allowCategoria && tipoAtual !== "pai" ? (
                   <div className="relative">
-                    <FieldLabel icon={<Tag className="h-4 w-4" />}>
-                      Categoria{obrigatorioLabel(categoriaObrigatoria)}
-                    </FieldLabel>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={categoriaBusca}
-                        onFocus={() =>
-                          !readonly && equipeId && setMostrarCategoriaMenu(true)
-                        }
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setCategoriaBusca(value);
-                          if (!readonly && equipeId) setMostrarCategoriaMenu(true);
-                          if (!value.trim()) setCategoriaId("");
-                        }}
-                        disabled={readonly || !equipeId}
-                        className={`${inputClass(readonly || !equipeId)} pr-28`}
-                        style={{
-                          backgroundColor: "var(--input)",
-                          border: "1px solid var(--border)",
-                          color: "var(--text-1)",
-                        }}
-                        placeholder={
-                          equipeId
-                            ? "Buscar categoria"
-                            : "Selecione uma equipe primeiro"
-                        }
-                      />
-                      <div
-                        className="pointer-events-none absolute inset-y-0 right-12 flex items-center text-xs"
-                        style={{ color: "var(--text-4)" }}
-                      >
-                        {mostrarCategoriaMenu ? "▴" : "▾"}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNovaCategoriaNome(categoriaBusca.trim());
-                          setModalCategoriaOpen(true);
-                        }}
-                        disabled={readonly || !equipeId}
-                        className="absolute right-1.5 top-1.5 inline-flex h-8 items-center justify-center rounded-lg px-2.5 text-xs font-medium transition"
-                        style={{
-                          backgroundColor: "var(--surface-0)",
-                          border: "1px solid var(--border)",
-                          color: "var(--text-2)",
-                        }}
-                      >
-                        +
-                      </button>
-                    </div>
+                    <FieldLabel icon={<Tag className="h-4 w-4" />}>Categoria</FieldLabel>
 
-                    {mostrarCategoriaMenu && !readonly && equipeId ? (
+                    <button
+                      type="button"
+                      onClick={() => !readonly && equipeId && setMostrarCategoriaPopover((v) => !v)}
+                      disabled={readonly || !equipeId}
+                      className="flex h-11 w-full items-center justify-between gap-3 rounded-2xl px-4 text-sm"
+                      style={{
+                        backgroundColor: "var(--input)",
+                        border: "1px solid var(--border)",
+                        color: categoriaSelecionada ? "var(--text-1)" : "var(--placeholder)",
+                        opacity: readonly || !equipeId ? 0.6 : 1,
+                      }}
+                    >
+                      <div className="min-w-0 flex-1 truncate">
+                        {categoriaSelecionada?.nome ?? "Selecione uma categoria"}
+                      </div>
+                      <span style={{ color: "var(--text-4)" }}>
+                        {mostrarCategoriaPopover ? "▴" : "▾"}
+                      </span>
+                    </button>
+
+                    {mostrarCategoriaPopover && !readonly && equipeId ? (
                       <div
-                        className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl"
+                        className="absolute z-30 mt-2 w-[min(96vw,520px)] overflow-hidden rounded-2xl"
                         style={{
                           backgroundColor: "var(--surface-1)",
                           border: "1px solid var(--border)",
                           boxShadow: "var(--shadow-soft)",
                         }}
                       >
-                        <div className="max-h-56 overflow-y-auto p-1.5">
-                          {categoriasFiltradas.length > 0 ? (
-                            categoriasFiltradas.map((categoria) => (
-                              <button
-                                key={categoria.id}
-                                type="button"
-                                onClick={() => {
-                                  setCategoriaId(categoria.id);
-                                  setCategoriaBusca(categoria.nome);
-                                  setMostrarCategoriaMenu(false);
-                                }}
-                                className="interactive-surface flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition"
-                                style={{ color: "var(--text-2)" }}
+                        <div className="space-y-3 p-3">
+                          <div
+                            className="flex items-center gap-2 rounded-xl px-3 py-2"
+                            style={{
+                              backgroundColor: "var(--input)",
+                              border: "1px solid var(--border)",
+                            }}
+                          >
+                            <Search className="h-4 w-4" style={{ color: "var(--text-4)" }} />
+                            <input
+                              type="text"
+                              value={categoriaBusca}
+                              onChange={(event) => setCategoriaBusca(event.target.value)}
+                              placeholder="Buscar categoria"
+                              className="w-full bg-transparent text-sm outline-none"
+                              style={{ color: "var(--text-1)" }}
+                            />
+                          </div>
+
+                          {categoriaSelecionada ? (
+                            <div className="space-y-1.5">
+                              <div
+                                className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                                style={{ color: "var(--text-4)" }}
                               >
-                                <span>{categoria.nome}</span>
-                                {categoriaId === categoria.id ? (
-                                  <span
-                                    className="text-[11px]"
-                                    style={{ color: "var(--text-4)" }}
-                                  >
-                                    Selecionada
-                                  </span>
-                                ) : null}
-                              </button>
-                            ))
-                          ) : (
-                            <div
-                              className="px-3 py-3 text-sm"
-                              style={{ color: "var(--text-4)" }}
-                            >
-                              Nenhuma categoria encontrada.
+                                Categoria selecionada
+                              </div>
+
+                              <div
+                                className="rounded-xl px-3 py-2 text-sm"
+                                style={{
+                                  backgroundColor: "var(--surface-1)",
+                                  border: "1px solid var(--border)",
+                                  color: "var(--text-2)",
+                                }}
+                              >
+                                {categoriaSelecionada.nome}
+                              </div>
                             </div>
-                          )}
-                        </div>
-                        <div className="p-2" style={{ borderTop: "1px solid var(--border)" }}>
+                          ) : null}
+
                           <button
                             type="button"
                             onClick={() => {
+                              setErroCategoria(null);
                               setNovaCategoriaNome(categoriaBusca.trim());
+                              setNovaCategoriaDescricao("");
                               setModalCategoriaOpen(true);
                             }}
-                            className="button-neutral inline-flex h-9 w-full items-center justify-center rounded-xl px-3 text-sm font-medium"
+                            className="button-neutral inline-flex h-10 w-full items-center justify-center rounded-xl px-4 text-sm font-medium"
                           >
-                            Criar categoria +
+                            Adicionar categoria
                           </button>
+
+                          <div className="space-y-1.5">
+                            <div
+                              className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                              style={{ color: "var(--text-4)" }}
+                            >
+                              Categorias
+                            </div>
+
+                            <div className="space-y-1">
+                              {categoriasFiltradas.slice(0, 5).length > 0 ? (
+                                categoriasFiltradas.slice(0, 5).map((categoria) => (
+                                  <button
+                                    key={categoria.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setCategoriaId(categoria.id);
+                                      setCategoriaBusca("");
+                                      setMostrarCategoriaPopover(false);
+                                    }}
+                                    className="interactive-surface flex w-full items-center rounded-xl px-3 py-2 text-left text-sm transition"
+                                    style={{ color: "var(--text-2)" }}
+                                  >
+                                    <span className="truncate">{categoria.nome}</span>
+                                  </button>
+                                ))
+                              ) : (
+                                <div
+                                  className="rounded-xl border border-dashed px-3 py-3 text-sm"
+                                  style={{
+                                    borderColor: "var(--border)",
+                                    backgroundColor: "var(--surface-1)",
+                                    color: "var(--text-4)",
+                                  }}
+                                >
+                                  Nenhuma categoria encontrada.
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     ) : null}
@@ -834,7 +905,7 @@ export function TarefaFormBase({
 
                 <div>
                   <FieldLabel icon={<CalendarDays className="h-4 w-4" />}>
-                    Data de entrega{obrigatorioLabel(true)}
+                    Data de entrega
                   </FieldLabel>
                   <input
                     type="date"
@@ -851,9 +922,7 @@ export function TarefaFormBase({
                 </div>
 
                 <div>
-                  <FieldLabel icon={<Clock3 className="h-4 w-4" />}>
-                    Hora de entrega
-                  </FieldLabel>
+                  <FieldLabel icon={<Clock3 className="h-4 w-4" />}>Hora de entrega</FieldLabel>
                   <input
                     type="time"
                     value={horaEntrega}
@@ -875,14 +944,14 @@ export function TarefaFormBase({
                   value={descricao}
                   onChange={(event) => setDescricao(event.target.value)}
                   disabled={readonly}
-                  rows={6}
+                  rows={3}
                   className={textAreaClass(readonly)}
                   style={{
                     backgroundColor: "var(--input)",
                     border: "1px solid var(--border)",
                     color: "var(--text-1)",
                   }}
-                  placeholder="Descreva o objetivo, contexto e entregáveis esperados."
+                  placeholder="Descreva o contexto e os entregáveis esperados."
                 />
               </div>
             </div>
@@ -900,71 +969,25 @@ export function TarefaFormBase({
             minCount={1}
           />
 
-          <section
-            className="rounded-[24px] p-4 md:p-5"
-            style={{
-              backgroundColor: "var(--surface-1)",
-              border: "1px solid var(--border)",
-              boxShadow: "var(--shadow-card)",
-            }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold" style={{ color: "var(--text-1)" }}>
-                  Links
-                </h3>
-                <p className="mt-1 text-xs" style={{ color: "var(--text-4)" }}>
-                  Adicione referências, documentos e materiais relacionados.
-                </p>
-              </div>
+          <TarefaLinksField
+            value={links}
+            onChange={setLinks}
+            disabled={readonly}
+            label="Links"
+            description="Adicione referências, documentos e materiais relacionados."
+          />
+
+          {!hideInternalSubmit ? (
+            <div className="flex items-center justify-end pt-1">
               <button
-                type="button"
-                onClick={() => setLinksAbertos((v) => !v)}
-                className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                type={readonly ? "button" : "submit"}
+                disabled={!readonly && submitting}
+                className="button-primary inline-flex h-11 items-center rounded-xl px-5 text-sm font-medium disabled:opacity-50"
               >
-                {linksAbertos ? "Ocultar" : "Adicionar links"}
+                {submitting ? "Salvando..." : resolvedSubmitLabel}
               </button>
             </div>
-
-            {linksAbertos ? (
-              <div className="mt-4">
-                <TarefaLinksField value={links} onChange={setLinks} disabled={readonly} />
-              </div>
-            ) : links.length > 0 ? (
-              <div className="mt-4 space-y-2">
-                {links.map((item, index) => (
-                  <a
-                    key={`${item.id ?? "novo"}-${index}`}
-                    href={item.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="interactive-surface block rounded-2xl p-3 transition"
-                    style={{
-                      backgroundColor: "var(--surface-0)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div className="truncate text-sm" style={{ color: "var(--text-1)" }}>
-                      {item.texto || item.url}
-                    </div>
-                    <div className="mt-1 truncate text-xs" style={{ color: "var(--text-4)" }}>
-                      {item.url}
-                    </div>
-                  </a>
-                ))}
-              </div>
-            ) : null}
-          </section>
-
-          <div className="flex items-center justify-end pt-1">
-            <button
-              type={readonly ? "button" : "submit"}
-              disabled={!readonly && submitting}
-              className="button-primary inline-flex h-11 items-center rounded-xl px-5 text-sm font-medium disabled:opacity-50"
-            >
-              {submitting ? "Salvando..." : resolvedSubmitLabel}
-            </button>
-          </div>
+          ) : null}
         </form>
       </div>
 
@@ -988,6 +1011,8 @@ export function TarefaFormBase({
                 onClick={() => {
                   setModalCategoriaOpen(false);
                   setErroCategoria(null);
+                  setNovaCategoriaNome("");
+                  setNovaCategoriaDescricao("");
                 }}
                 className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
               >
@@ -1000,10 +1025,7 @@ export function TarefaFormBase({
                 <FieldLabel>Equipe</FieldLabel>
                 <input
                   type="text"
-                  value={
-                    equipes.find((item) => item.id === equipeId)?.nome ??
-                    "Nenhuma equipe selecionada"
-                  }
+                  value={equipes.find((item) => item.id === equipeId)?.nome ?? "Nenhuma equipe selecionada"}
                   disabled
                   className={inputClass(true)}
                   style={{
@@ -1015,7 +1037,7 @@ export function TarefaFormBase({
               </div>
 
               <div>
-                <FieldLabel>Nome{obrigatorioLabel(true)}</FieldLabel>
+                <FieldLabel>Nome</FieldLabel>
                 <input
                   type="text"
                   value={novaCategoriaNome}
@@ -1047,7 +1069,7 @@ export function TarefaFormBase({
               </div>
 
               {erroCategoria ? (
-                <div className="status-danger rounded-2xl px-4 py-3 text-sm">
+                <div className="rounded-2xl px-4 py-3 text-sm status-danger">
                   {erroCategoria}
                 </div>
               ) : null}
@@ -1062,6 +1084,8 @@ export function TarefaFormBase({
                 onClick={() => {
                   setModalCategoriaOpen(false);
                   setErroCategoria(null);
+                  setNovaCategoriaNome("");
+                  setNovaCategoriaDescricao("");
                 }}
                 className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
               >

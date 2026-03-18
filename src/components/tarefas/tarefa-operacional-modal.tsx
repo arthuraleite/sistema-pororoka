@@ -1,7 +1,11 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
+import { TarefaAtualizacoesPanel } from "@/components/tarefas/tarefa-atualizacoes-panel";
 import { TarefaComentariosPanel } from "@/components/tarefas/tarefa-comentarios-panel";
 import { TarefaFormBase } from "@/components/tarefas/tarefa-form-base";
+import { TarefaModalShell } from "@/components/tarefas/tarefa-modal-shell";
 import type {
   CategoriaTarefa,
   StatusTarefa,
@@ -13,7 +17,8 @@ type EquipeOption = {
   id: string;
   nome: string;
 };
-console.log("teste");
+
+type PainelLateral = "comentarios" | "atualizacoes";
 
 type Props = {
   open: boolean;
@@ -67,12 +72,77 @@ type Props = {
   }) => void | Promise<void>;
 };
 
-function tituloModal(mode: Props["mode"], tipo: Props["tipo"]) {
-  const nome = tipo === "filha" ? "Tarefa filha" : "Tarefa órfã";
+function tituloBase(tipo: Props["tipo"]) {
+  return tipo === "filha" ? "Tarefa filha" : "Tarefa órfã";
+}
 
-  if (mode === "create") return `Nova ${nome}`;
-  if (mode === "edit") return `Editar ${nome}`;
-  return nome;
+function subtituloModal(mode: Props["mode"], tipo: Props["tipo"]) {
+  if (mode === "create") {
+    return `Cadastre uma nova ${tituloBase(tipo).toLowerCase()} e organize responsáveis, prazo e comentários no mesmo fluxo.`;
+  }
+
+  return `Edite a ${tituloBase(tipo).toLowerCase()} diretamente, com comentários e atualizações no mesmo fluxo.`;
+}
+
+function AccordionSection({
+  id,
+  titulo,
+  contador,
+  aberto,
+  onOpen,
+  children,
+}: {
+  id: PainelLateral;
+  titulo: string;
+  contador: number;
+  aberto: boolean;
+  onOpen: (id: PainelLateral) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className="overflow-hidden rounded-[var(--radius-2xl)] border"
+      style={{
+        borderColor: "var(--border)",
+        backgroundColor: "var(--surface-0)",
+      }}
+    >
+      <div
+        className="flex items-center justify-between gap-3 px-4 py-3"
+        onClick={() => onOpen(id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen(id);
+          }
+        }}
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <h3
+            className="truncate text-sm font-semibold"
+            style={{ color: "var(--text-1)" }}
+          >
+            {titulo}
+          </h3>
+          <span className="badge-neutral inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-medium">
+            {contador}
+          </span>
+        </div>
+
+        <span className="text-xs" style={{ color: "var(--text-4)" }}>
+          {aberto ? "▴" : "▾"}
+        </span>
+      </div>
+
+      {aberto ? (
+        <div className="border-t p-4" style={{ borderColor: "var(--border)" }}>
+          {children}
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 export function TarefaOperacionalModal({
@@ -87,8 +157,6 @@ export function TarefaOperacionalModal({
   categorias,
   tarefasPaiOptions = [],
   onClose,
-  onEditRequest,
-  onViewRequest,
   onExcluir,
   onReabrir,
   onAtualizarStatus,
@@ -97,190 +165,243 @@ export function TarefaOperacionalModal({
   onEditarComentario,
   onExcluirComentario,
 }: Props) {
+  const [tituloEmEdicao, setTituloEmEdicao] = useState("");
+  const [formDirty, setFormDirty] = useState(false);
+  const [painelAberto, setPainelAberto] = useState<PainelLateral>("comentarios");
+
+  const effectiveMode = mode === "create" ? "create" : "edit";
+
+  const tituloCabecalho = useMemo(() => {
+    if (tituloEmEdicao.trim()) return tituloEmEdicao.trim();
+
+    if (mode === "create") {
+      return `Nova ${tituloBase(tipo).toLowerCase()}`;
+    }
+
+    return tarefa?.titulo?.trim() || tituloBase(tipo);
+  }, [mode, tipo, tarefa, tituloEmEdicao]);
+
+  const subtituloCabecalho = useMemo(
+    () => subtituloModal(mode, tipo),
+    [mode, tipo],
+  );
+
+  const atualizacoesSidebar = useMemo(() => {
+    if (!tarefa) return [];
+
+    const itens: Array<{ id: string; descricao: string; criadoEm: string }> = [];
+
+    if (tarefa.dataCriacao) {
+      itens.push({
+        id: `criacao_${tarefa.id}`,
+        descricao: "Tarefa criada.",
+        criadoEm: tarefa.dataCriacao,
+      });
+    }
+
+    if (tarefa.dataAtualizacao && tarefa.dataAtualizacao !== tarefa.dataCriacao) {
+      itens.push({
+        id: `edicao_${tarefa.id}`,
+        descricao: "Tarefa atualizada.",
+        criadoEm: tarefa.dataAtualizacao,
+      });
+    }
+
+    for (const comentario of tarefa.comentarios ?? []) {
+      itens.push({
+        id: `comentario_${comentario.id}`,
+        descricao: "Comentário adicionado.",
+        criadoEm: comentario.dataCriacao,
+      });
+    }
+
+    return itens.sort(
+      (a, b) =>
+        new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime(),
+    );
+  }, [tarefa]);
+
+  function handleClose() {
+    if (effectiveMode !== "create" || mode === "create") {
+      if (formDirty) {
+        const confirmar = window.confirm(
+          "Tem certeza que deseja sair sem salvar?",
+        );
+        if (!confirmar) return;
+      }
+    }
+
+    onClose();
+  }
+
   if (!open) return null;
 
-  const equipeId = tarefa && tarefa.tipo !== "pai" ? tarefa.equipeId : null;
-
-  const categoriasDisponiveis = equipeId
-    ? categorias.filter((categoria) => categoria.equipeId === equipeId)
-    : categorias;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-zinc-950/80 p-4 backdrop-blur-sm">
-      <div className="flex min-h-full items-start justify-center py-4">
-        <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 shadow-2xl">
-          <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
-            <div>
-              <h2 className="text-lg font-semibold text-zinc-100">
-                {tituloModal(mode, tipo)}
-              </h2>
-              <p className="mt-1 text-sm text-zinc-500">
-                Modal compartilhado para criação, edição e visualização
-                operacional.
-              </p>
-            </div>
+    <TarefaModalShell
+      open={open}
+      title={tituloCabecalho}
+      subtitle={subtituloCabecalho}
+      onClose={handleClose}
+      main={
+        <div className="space-y-5">
+          <div className="mx-auto w-full max-w-[1120px]">
+            <TarefaFormBase
+              mode={effectiveMode}
+              tipo={tipo}
+              usuarios={usuarios}
+              equipes={equipes}
+              categorias={categorias}
+              tarefasPaiOptions={tarefasPaiOptions}
+              allowEquipe
+              allowCategoria
+              allowPrioridade
+              allowStatus={mode !== "create"}
+              initialValues={
+                tarefa && tarefa.tipo !== "pai"
+                  ? {
+                      titulo: tarefa.titulo,
+                      descricao: tarefa.descricao,
+                      tarefaPaiId:
+                        tarefa.tipo === "filha" ? tarefa.tarefaPaiId : null,
+                      equipeId: tarefa.equipeId,
+                      categoriaId: tarefa.categoriaId,
+                      prioridade: tarefa.prioridade,
+                      status: tarefa.status,
+                      dataEntrega: tarefa.dataEntrega,
+                      horaEntrega: tarefa.horaEntrega,
+                      responsavelIds: tarefa.responsaveis.map((item) => item.id),
+                      links: tarefa.links,
+                    }
+                  : undefined
+              }
+              onSubmit={async (values) => {
+                if (!onSubmit) return;
+                await onSubmit({
+                  ...values,
+                  tipo,
+                });
+              }}
+              submitLabel=""
+              formId="form-tarefa-operacional"
+              hideInternalSubmit
+              onTituloChange={setTituloEmEdicao}
+              onDirtyChange={setFormDirty}
+              lockEquipeSelection={mode !== "create"}
+              lockTarefaPaiSelection={mode !== "create" && tipo === "filha"}
+            />
+          </div>
+        </div>
+      }
+      sidebar={
+        <div className="space-y-4">
+          <AccordionSection
+            id="comentarios"
+            titulo="Comentários"
+            contador={tarefa?.comentarios.length ?? 0}
+            aberto={painelAberto === "comentarios"}
+            onOpen={setPainelAberto}
+          >
+            {tarefa ? (
+              <TarefaComentariosPanel
+                comentarios={tarefa.comentarios}
+                usuarioAtualId={usuarioAtualId}
+                usuarioAtualNome={
+                  usuarios.find((usuario) => usuario.id === usuarioAtualId)?.nome ??
+                  null
+                }
+                usuarioAtualAvatarUrl={
+                  usuarios.find((usuario) => usuario.id === usuarioAtualId)
+                    ?.avatarUrl ?? null
+                }
+                podeModerar={podeModerarComentarios}
+                onAdicionar={onAdicionarComentario}
+                onEditar={onEditarComentario}
+                onExcluir={onExcluirComentario}
+                disabled={mode === "create"}
+              />
+            ) : (
+              <div
+                className="rounded-2xl p-4 text-sm"
+                style={{
+                  border: "1px dashed var(--border)",
+                  backgroundColor: "var(--surface-0)",
+                  color: "var(--text-3)",
+                }}
+              >
+                Salve a tarefa antes de começar a comentar.
+              </div>
+            )}
+          </AccordionSection>
 
+          <AccordionSection
+            id="atualizacoes"
+            titulo="Atualizações"
+            contador={atualizacoesSidebar.length}
+            aberto={painelAberto === "atualizacoes"}
+            onOpen={setPainelAberto}
+          >
+            <TarefaAtualizacoesPanel
+              itens={atualizacoesSidebar}
+              vazioLabel="Nenhuma atualização registrada até o momento."
+            />
+          </AccordionSection>
+        </div>
+      }
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            {tarefa && mode !== "create" ? (
+              <>
+                {tarefa.status !== "concluida" ? (
+                  <button
+                    type="button"
+                    onClick={() => onAtualizarStatus?.("concluida")}
+                    className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                  >
+                    Concluir tarefa
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onReabrir?.("a_fazer")}
+                    className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                  >
+                    Reabrir tarefa
+                  </button>
+                )}
+
+                {onExcluir ? (
+                  <button
+                    type="button"
+                    onClick={onExcluir}
+                    className="button-danger inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+                  >
+                    Excluir tarefa
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
-              onClick={onClose}
-              className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
+              onClick={handleClose}
+              className="button-neutral inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
             >
               Fechar
             </button>
-          </div>
 
-          {tarefa && mode !== "create" ? (
-            <div className="flex flex-wrap gap-2 border-b border-zinc-800 px-6 py-3">
-              {mode === "view" ? (
-                <button
-                  type="button"
-                  onClick={onEditRequest}
-                  className="rounded-xl border border-zinc-700 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950 transition hover:bg-zinc-200"
-                >
-                  Editar
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onViewRequest}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
-                >
-                  Voltar para visualização
-                </button>
-              )}
-
-              {tarefa.status !== "concluida" ? (
-                <button
-                  type="button"
-                  onClick={() => onAtualizarStatus?.("concluida")}
-                  className="rounded-xl border border-emerald-800 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-200 transition hover:bg-emerald-950/60"
-                >
-                  Concluir
-                </button>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    ["a_fazer", "em_andamento", "atencao", "em_pausa"] as const
-                  ).map((status) => (
-                    <button
-                      key={status}
-                      type="button"
-                      onClick={() => onReabrir?.(status)}
-                      className="rounded-xl border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm text-amber-200 transition hover:bg-amber-950/60"
-                    >
-                      Reabrir em {status.replaceAll("_", " ")}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {tarefa.status !== "concluida" ? (
-                <div className="flex flex-wrap gap-2">
-                  {(
-                    ["a_fazer", "em_andamento", "atencao", "em_pausa"] as const
-                  )
-                    .filter((status) => status !== tarefa.status)
-                    .map((status) => (
-                      <button
-                        key={status}
-                        type="button"
-                        onClick={() => onAtualizarStatus?.(status)}
-                        className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-700"
-                      >
-                        Marcar {status.replaceAll("_", " ")}
-                      </button>
-                    ))}
-                </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={onExcluir}
-                className="rounded-xl border border-red-900/60 bg-red-950/40 px-3 py-2 text-sm text-red-200 transition hover:bg-red-950/60"
-              >
-                Excluir tarefa
-              </button>
-            </div>
-          ) : null}
-
-          <div className="min-h-0 grid flex-1 gap-0 xl:grid-cols-[minmax(0,1.2fr)_420px]">
-            <div className="min-h-0 overflow-y-auto border-b border-zinc-800 px-6 py-6 xl:border-b-0 xl:border-r">
-              <div className="space-y-6">
-                <TarefaFormBase
-                  mode={mode}
-                  tipo={tipo}
-                  usuarios={usuarios}
-                  equipes={equipes}
-                  categorias={categoriasDisponiveis}
-                  tarefasPaiOptions={tarefasPaiOptions}
-                  allowEquipe
-                  allowCategoria
-                  allowPrioridade
-                  allowStatus={mode !== "create"}
-                  initialValues={
-                    tarefa && tarefa.tipo !== "pai"
-                      ? {
-                          titulo: tarefa.titulo,
-                          descricao: tarefa.descricao,
-                          tarefaPaiId:
-                            tarefa.tipo === "filha" ? tarefa.tarefaPaiId : null,
-                          equipeId: tarefa.equipeId,
-                          categoriaId: tarefa.categoriaId,
-                          prioridade: tarefa.prioridade,
-                          status: tarefa.status,
-                          dataEntrega: tarefa.dataEntrega,
-                          horaEntrega: tarefa.horaEntrega,
-                          responsavelIds: tarefa.responsaveis.map(
-                            (item) => item.id,
-                          ),
-                          links: tarefa.links,
-                        }
-                      : undefined
-                  }
-                  onSubmit={async (values) => {
-                    if (!onSubmit) return;
-                    await onSubmit({
-                      ...values,
-                      tipo,
-                    });
-                  }}
-                  submitLabel={
-                    mode === "create"
-                      ? "Criar tarefa"
-                      : mode === "edit"
-                        ? "Salvar alterações"
-                        : "Fechar"
-                  }
-                />
-
-                {tarefa ? (
-                  <TarefaComentariosPanel
-                    comentarios={tarefa.comentarios}
-                    usuarioAtualId={usuarioAtualId}
-                    podeModerar={podeModerarComentarios}
-                    onAdicionar={onAdicionarComentario}
-                    onEditar={onEditarComentario}
-                    onExcluir={onExcluirComentario}
-                    disabled={mode === "create"}
-                  />
-                ) : null}
-              </div>
-            </div>
-
-            <aside className="min-h-0 overflow-y-auto px-6 py-6">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/40 p-4">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-200">
-                  Contexto da tarefa
-                </h3>
-                <p className="mt-2 text-sm text-zinc-500">
-                  Este espaço pode receber, nas próximas etapas, histórico de
-                  responsáveis, notificações relacionadas e resumo operacional.
-                </p>
-              </div>
-            </aside>
+            <button
+              type="submit"
+              form="form-tarefa-operacional"
+              className="button-primary inline-flex h-10 items-center justify-center rounded-xl px-4 text-sm font-medium"
+            >
+              {mode === "create" ? "Criar tarefa" : "Salvar alterações"}
+            </button>
           </div>
         </div>
-      </div>
-    </div>
+      }
+    />
   );
 }

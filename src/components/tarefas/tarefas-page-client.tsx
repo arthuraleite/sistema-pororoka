@@ -15,10 +15,6 @@ import { reabrirTarefa } from "@/actions/tarefas/reabrir-tarefa";
 import { TarefaOperacionalModal } from "@/components/tarefas/tarefa-operacional-modal";
 import { TarefaPaiModal } from "@/components/tarefas/tarefa-pai-modal";
 import { ObjetivosSection } from "@/components/tarefas/objetivos-section";
-import type {
-  ComentarioDraft,
-  TarefaFilhaDraft,
-} from "@/components/tarefas/hooks/use-tarefa-pai-draft";
 import {
   aplicarFiltrosLocais,
   detalheParaTarefaBase,
@@ -53,11 +49,12 @@ type ViewMode = "kanban" | "table" | "week";
 
 type ModalState =
   | { open: false }
+  | { open: true; mode: "create"; tipo: "pai" | "filha" | "orfa" }
   | {
       open: true;
+      mode: "view" | "edit";
       tipo: "pai" | "filha" | "orfa";
-      isNew: boolean;
-      tarefaId?: string;
+      tarefaId: string;
     };
 
 type PayloadModalPai = {
@@ -66,9 +63,13 @@ type PayloadModalPai = {
   descricao?: string | null;
   projetoId?: string | null;
   prioridade?: "urgente" | "alta" | "media" | "baixa" | null;
-  status?: StatusTarefa;
-  escopoObjetivo?: "global" | "equipe";
-  equipeId?: string | null;
+  status?:
+    | "a_fazer"
+    | "em_andamento"
+    | "atencao"
+    | "em_pausa"
+    | "em_atraso"
+    | "concluida";
   dataEntrega: string;
   horaEntrega?: string | null;
   responsavelIds: string[];
@@ -83,7 +84,13 @@ type PayloadModalOperacional = {
   equipeId?: string | null;
   categoriaId?: string | null;
   prioridade?: "urgente" | "alta" | "media" | "baixa" | null;
-  status?: StatusTarefa;
+  status?:
+    | "a_fazer"
+    | "em_andamento"
+    | "atencao"
+    | "em_pausa"
+    | "em_atraso"
+    | "concluida";
   dataEntrega: string;
   horaEntrega?: string | null;
   responsavelIds: string[];
@@ -136,7 +143,9 @@ export function TarefasPageClient({
     ordenacao: "data_entrega",
     responsavelIds: usuarioAtual?.id ? [usuarioAtual.id] : [],
   });
-  const [itensState, setItensState] = useState<Tarefa[]>(resultadoInicial.data?.itens ?? []);
+  const [itensState, setItensState] = useState<Tarefa[]>(
+    resultadoInicial.data?.itens ?? [],
+  );
   const [modal, setModal] = useState<ModalState>({ open: false });
   const [tarefaAtual, setTarefaAtual] = useState<TarefaDetalhe | null>(null);
   const [loadingTarefa, setLoadingTarefa] = useState(false);
@@ -144,7 +153,10 @@ export function TarefasPageClient({
   const [processingComment, setProcessingComment] = useState(false);
   const [erroAcao, setErroAcao] = useState<string | null>(null);
 
-  const erroInicial = !resultadoInicial.sucesso ? resultadoInicial.mensagem : null;
+  const erroInicial = !resultadoInicial.sucesso
+    ? resultadoInicial.mensagem
+    : null;
+
   const perfilAtual = usuarioAtual?.perfil ?? null;
 
   const podeVerObjetivos = [
@@ -170,18 +182,30 @@ export function TarefasPageClient({
   );
 
   const itens = useMemo(() => itensState, [itensState]);
-  const objetivosBase = useMemo(() => itens.filter((item) => item.tipo === "pai"), [itens]);
-  const tarefasBase = useMemo(() => itens.filter((item) => item.tipo !== "pai"), [itens]);
+
+  const objetivosBase = useMemo(
+    () => itens.filter((item) => item.tipo === "pai"),
+    [itens],
+  );
+
+  const tarefasBase = useMemo(
+    () => itens.filter((item) => item.tipo !== "pai"),
+    [itens],
+  );
 
   const objetivos = useMemo(() => {
     if (!podeVerObjetivos) return [];
+
     let filtrados = aplicarFiltrosLocais(objetivosBase, filtrosObjetivos);
 
     if (filtrosObjetivos.escopoObjetivo === "global") {
       filtrados = filtrados.filter(
         (item) => item.tipo === "pai" && item.escopoObjetivo === "global",
       );
-    } else if (filtrosObjetivos.escopoObjetivo && filtrosObjetivos.escopoObjetivo !== "todos") {
+    } else if (
+      filtrosObjetivos.escopoObjetivo &&
+      filtrosObjetivos.escopoObjetivo !== "todos"
+    ) {
       filtrados = filtrados.filter(
         (item) =>
           item.tipo === "pai" &&
@@ -193,8 +217,10 @@ export function TarefasPageClient({
     return [...filtrados].sort((a, b) => {
       const aConcluido = a.status === "concluida";
       const bConcluido = b.status === "concluida";
+
       if (aConcluido && !bConcluido) return 1;
       if (!aConcluido && bConcluido) return -1;
+
       return (
         prazoTimestamp(a.dataEntrega, a.horaEntrega) -
         prazoTimestamp(b.dataEntrega, b.horaEntrega)
@@ -219,10 +245,16 @@ export function TarefasPageClient({
         .sort((a, b) => {
           if (a.emAtraso && !b.emAtraso) return -1;
           if (!a.emAtraso && b.emAtraso) return 1;
-          const prazo = prazoTimestamp(a.prazo, a.horaEntrega) - prazoTimestamp(b.prazo, b.horaEntrega);
+
+          const prazo =
+            prazoTimestamp(a.prazo, a.horaEntrega) -
+            prazoTimestamp(b.prazo, b.horaEntrega);
           if (prazo !== 0) return prazo;
-          const prioridade = prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
+
+          const prioridade =
+            prioridadePeso(a.prioridade) - prioridadePeso(b.prioridade);
           if (prioridade !== 0) return prioridade;
+
           return a.titulo.localeCompare(b.titulo);
         }),
     [tarefasFiltradas, objetivosTituloMap],
@@ -230,40 +262,71 @@ export function TarefasPageClient({
 
   const tarefasPaiOptions = useMemo(
     () =>
-      itens.filter((item) => item.tipo === "pai").map((item) => ({ id: item.id, titulo: item.titulo })),
+      itens
+        .filter((item) => item.tipo === "pai")
+        .map((item) => ({
+          id: item.id,
+          titulo: item.titulo,
+        })),
     [itens],
   );
 
   async function recarregarDetalheAtual(tarefaId: string) {
     const resultado = await buscarTarefa({ tarefaId });
+
     if (!resultado.sucesso || !resultado.data) {
-      throw new Error(resultado.mensagem || "Não foi possível recarregar a tarefa.");
+      throw new Error(
+        resultado.mensagem || "Não foi possível recarregar a tarefa.",
+      );
     }
+
     setTarefaAtual(resultado.data);
     upsertListaComDetalhe(resultado.data);
+    return resultado.data;
   }
 
   function upsertListaComDetalhe(detalhe: TarefaDetalhe) {
     setItensState((current) => {
       const baseAtualizada = detalheParaTarefaBase(detalhe);
       const existe = current.some((item) => item.id === detalhe.id);
-      if (!existe) return [baseAtualizada, ...current];
-      return current.map((item) => (item.id === detalhe.id ? baseAtualizada : item));
+
+      if (!existe) {
+        return [baseAtualizada, ...current];
+      }
+
+      return current.map((item) =>
+        item.id === detalhe.id ? baseAtualizada : item,
+      );
     });
   }
 
-  async function abrirTarefaPorId(tarefaId: string) {
+  async function abrirTarefaPorId(
+    tarefaId: string,
+    mode: "view" | "edit" = "view",
+  ) {
     setErroAcao(null);
     setLoadingTarefa(true);
+
     try {
       const resultado = await buscarTarefa({ tarefaId });
+
       if (!resultado.sucesso || !resultado.data) {
-        throw new Error(resultado.mensagem || "Não foi possível carregar a tarefa.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível carregar a tarefa.",
+        );
       }
+
       setTarefaAtual(resultado.data);
-      setModal({ open: true, tipo: resultado.data.tipo, tarefaId, isNew: false });
+      setModal({
+        open: true,
+        mode,
+        tipo: resultado.data.tipo,
+        tarefaId,
+      });
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao abrir tarefa.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao abrir tarefa.",
+      );
     } finally {
       setLoadingTarefa(false);
     }
@@ -278,74 +341,24 @@ export function TarefasPageClient({
   async function criarNovaTarefa(values: CriarTarefaInput) {
     setErroAcao(null);
     setSubmittingModal(true);
+
     try {
       const resultado = await criarTarefa(values);
+
       if (!resultado.sucesso || !resultado.data) {
-        throw new Error(resultado.mensagem || "Não foi possível criar a tarefa.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível criar a tarefa.",
+        );
       }
+
       upsertListaComDetalhe(resultado.data);
       fecharModal();
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : `Erro ao criar tarefa: ${String(error)}`);
-    } finally {
-      setSubmittingModal(false);
-    }
-  }
-
-  async function criarObjetivoComDependencias(
-    values: CriarTarefaInput,
-    extras?: { filhasDraft: TarefaFilhaDraft[]; comentariosDraft: ComentarioDraft[] },
-  ) {
-    setErroAcao(null);
-    setSubmittingModal(true);
-
-    try {
-      const resultadoObjetivo = await criarTarefa(values);
-      if (!resultadoObjetivo.sucesso || !resultadoObjetivo.data) {
-        throw new Error(resultadoObjetivo.mensagem || "Não foi possível criar o objetivo.");
-      }
-
-      const objetivoId = resultadoObjetivo.data.id;
-
-      for (const filha of extras?.filhasDraft ?? []) {
-        const resultadoFilha = await criarTarefa({
-          tipo: "filha",
-          escopoObjetivo: null,
-          titulo: filha.titulo,
-          descricao: filha.descricao ?? null,
-          tarefaPaiId: objetivoId,
-          equipeId: filha.equipeId,
-          categoriaId: filha.categoriaId,
-          prioridade: filha.prioridade,
-          status: filha.status,
-          dataEntrega: filha.dataEntrega,
-          horaEntrega: filha.horaEntrega ?? null,
-          responsavelIds: filha.responsavelIds,
-          links: [],
-        });
-
-        if (!resultadoFilha.sucesso) {
-          throw new Error(resultadoFilha.mensagem || `Não foi possível criar a tarefa filha ${filha.titulo}.`);
-        }
-      }
-
-      for (const comentario of extras?.comentariosDraft ?? []) {
-        const resultadoComentario = await adicionarComentario({
-          tarefaId: objetivoId,
-          comentarioPaiId: comentario.comentarioPaiId ?? null,
-          conteudo: comentario.conteudo,
-          linkExterno: comentario.linkExterno ?? null,
-        });
-
-        if (!resultadoComentario.sucesso) {
-          throw new Error(resultadoComentario.mensagem || "Não foi possível salvar um comentário em rascunho.");
-        }
-      }
-
-      await recarregarDetalheAtual(objetivoId);
-      setModal({ open: true, tipo: "pai", tarefaId: objetivoId, isNew: false });
-    } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao criar objetivo.");
+      setErroAcao(
+        error instanceof Error
+          ? error.message
+          : `Erro ao criar tarefa: ${String(error)}`,
+      );
     } finally {
       setSubmittingModal(false);
     }
@@ -353,18 +366,30 @@ export function TarefasPageClient({
 
   async function salvarEdicaoTarefa(values: Omit<EditarTarefaInput, "id">) {
     if (!tarefaAtual) return;
+
     setErroAcao(null);
     setSubmittingModal(true);
+
     try {
-      const resultado = await editarTarefa({ ...values, id: tarefaAtual.id });
+      const resultado = await editarTarefa({
+        ...values,
+        id: tarefaAtual.id,
+      });
+
       if (!resultado.sucesso || !resultado.data) {
-        throw new Error(resultado.mensagem || "Não foi possível editar a tarefa.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível editar a tarefa.",
+        );
       }
+
       const detalhe = resultado.data;
+
       setTarefaAtual(detalhe);
+
       setItensState((atual) =>
         atual.map((item) => {
           if (item.id !== detalhe.id) return item;
+
           return {
             ...item,
             titulo: detalhe.titulo,
@@ -383,14 +408,23 @@ export function TarefasPageClient({
                     avatarUrl: responsavel.avatarUrl ?? null,
                   }))
                 : item.responsaveis,
-            equipe: detalhe.tipo !== "pai" ? detalhe.equipe ?? item.equipe : item.equipe,
-            categoria: detalhe.tipo !== "pai" ? detalhe.categoria ?? item.categoria : item.categoria,
+            equipe:
+              detalhe.tipo !== "pai"
+                ? (detalhe.equipe ?? item.equipe)
+                : item.equipe,
+            categoria:
+              detalhe.tipo !== "pai"
+                ? (detalhe.categoria ?? item.categoria)
+                : item.categoria,
           } as typeof item;
         }),
       );
+
       fecharModal();
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao editar tarefa.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao editar tarefa.",
+      );
     } finally {
       setSubmittingModal(false);
     }
@@ -398,29 +432,51 @@ export function TarefasPageClient({
 
   async function handleAtualizarStatus(novoStatus: StatusTarefa) {
     if (!tarefaAtual) return;
+
     setErroAcao(null);
     setSubmittingModal(true);
+
     try {
-      const resultado = await moverTarefaStatus({ id: tarefaAtual.id, novoStatus });
+      const resultado = await moverTarefaStatus({
+        id: tarefaAtual.id,
+        novoStatus,
+      });
+
       if (!resultado.sucesso || !resultado.data) {
-        throw new Error(resultado.mensagem || "Não foi possível atualizar o status.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível atualizar o status.",
+        );
       }
+
       setTarefaAtual(resultado.data);
       upsertListaComDetalhe(resultado.data);
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao atualizar status.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao atualizar status.",
+      );
     } finally {
       setSubmittingModal(false);
     }
   }
 
-  async function moverCardKanban(cardId: string, novoStatus: TarefaKanbanCard["status"]) {
+  async function moverCardKanban(
+    cardId: string,
+    novoStatus: TarefaKanbanCard["status"],
+  ) {
     setErroAcao(null);
+
     try {
-      const resultado = await moverTarefaStatus({ id: cardId, novoStatus });
+      const resultado = await moverTarefaStatus({
+        id: cardId,
+        novoStatus,
+      });
+
       if (!resultado.sucesso || !resultado.data) {
-        throw new Error(resultado.mensagem || "Não foi possível mover a tarefa.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível mover a tarefa.",
+        );
       }
+
       setItensState((atual) =>
         atual.map((item) =>
           item.id === cardId
@@ -433,6 +489,7 @@ export function TarefasPageClient({
             : item,
         ),
       );
+
       if (tarefaAtual?.id === cardId) {
         setTarefaAtual((atual) =>
           atual
@@ -446,23 +503,38 @@ export function TarefasPageClient({
         );
       }
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao mover tarefa no kanban.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao mover tarefa no kanban.",
+      );
     }
   }
 
-  async function handleReabrir(novoStatus: Exclude<StatusTarefa, "concluida" | "em_atraso">) {
+  async function handleReabrir(
+    novoStatus: Exclude<StatusTarefa, "concluida" | "em_atraso">,
+  ) {
     if (!tarefaAtual) return;
+
     setErroAcao(null);
     setSubmittingModal(true);
+
     try {
-      const resultado = await reabrirTarefa({ id: tarefaAtual.id, novoStatus });
+      const resultado = await reabrirTarefa({
+        id: tarefaAtual.id,
+        novoStatus,
+      });
+
       if (!resultado.sucesso || !resultado.data) {
-        throw new Error(resultado.mensagem || "Não foi possível reabrir a tarefa.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível reabrir a tarefa.",
+        );
       }
+
       setTarefaAtual(resultado.data);
       upsertListaComDetalhe(resultado.data);
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao reabrir tarefa.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao reabrir tarefa.",
+      );
     } finally {
       setSubmittingModal(false);
     }
@@ -470,26 +542,44 @@ export function TarefasPageClient({
 
   async function handleExcluirTarefa() {
     if (!tarefaAtual || tarefaAtual.tipo === "pai") return;
+
     setErroAcao(null);
     setSubmittingModal(true);
+
     try {
-      const resultado = await excluirTarefa({ id: tarefaAtual.id });
+      const resultado = await excluirTarefa({
+        id: tarefaAtual.id,
+      });
+
       if (!resultado.sucesso) {
-        throw new Error(resultado.mensagem || "Não foi possível excluir a tarefa.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível excluir a tarefa.",
+        );
       }
-      setItensState((current) => current.filter((item) => item.id !== tarefaAtual.id));
+
+      setItensState((current) =>
+        current.filter((item) => item.id !== tarefaAtual.id),
+      );
       fecharModal();
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao excluir tarefa.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao excluir tarefa.",
+      );
     } finally {
       setSubmittingModal(false);
     }
   }
 
-  async function handleAdicionarComentario(values: { conteudo: string; linkExterno?: string | null; comentarioPaiId?: string | null }) {
+  async function handleAdicionarComentario(values: {
+    conteudo: string;
+    linkExterno?: string | null;
+    comentarioPaiId?: string | null;
+  }) {
     if (!tarefaAtual) return;
+
     setErroAcao(null);
     setProcessingComment(true);
+
     try {
       const resultado = await adicionarComentario({
         tarefaId: tarefaAtual.id,
@@ -497,33 +587,53 @@ export function TarefasPageClient({
         conteudo: values.conteudo,
         linkExterno: values.linkExterno ?? null,
       });
+
       if (!resultado.sucesso) {
-        throw new Error(resultado.mensagem || "Não foi possível adicionar o comentário.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível adicionar o comentário.",
+        );
       }
+
       await recarregarDetalheAtual(tarefaAtual.id);
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao adicionar comentário.");
+      setErroAcao(
+        error instanceof Error
+          ? error.message
+          : "Erro ao adicionar comentário.",
+      );
     } finally {
       setProcessingComment(false);
     }
   }
 
-  async function handleEditarComentario(values: { comentarioId: string; conteudo: string; linkExterno?: string | null }) {
+  async function handleEditarComentario(values: {
+    comentarioId: string;
+    conteudo: string;
+    linkExterno?: string | null;
+  }) {
     if (!tarefaAtual) return;
+
     setErroAcao(null);
     setProcessingComment(true);
+
     try {
       const resultado = await editarComentario({
         comentarioId: values.comentarioId,
         conteudo: values.conteudo,
         linkExterno: values.linkExterno ?? null,
       });
+
       if (!resultado.sucesso) {
-        throw new Error(resultado.mensagem || "Não foi possível editar o comentário.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível editar o comentário.",
+        );
       }
+
       await recarregarDetalheAtual(tarefaAtual.id);
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao editar comentário.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao editar comentário.",
+      );
     } finally {
       setProcessingComment(false);
     }
@@ -531,37 +641,158 @@ export function TarefasPageClient({
 
   async function handleExcluirComentario(comentarioId: string) {
     if (!tarefaAtual) return;
+
     setErroAcao(null);
     setProcessingComment(true);
+
     try {
       const resultado = await excluirComentario({ comentarioId });
+
       if (!resultado.sucesso) {
-        throw new Error(resultado.mensagem || "Não foi possível excluir o comentário.");
+        throw new Error(
+          resultado.mensagem || "Não foi possível excluir o comentário.",
+        );
       }
+
       await recarregarDetalheAtual(tarefaAtual.id);
     } catch (error) {
-      setErroAcao(error instanceof Error ? error.message : "Erro ao excluir comentário.");
+      setErroAcao(
+        error instanceof Error ? error.message : "Erro ao excluir comentário.",
+      );
     } finally {
       setProcessingComment(false);
+    }
+  }
+
+  async function handleCarregarFilhaPersistida(filhaId: string) {
+    try {
+      const resultado = await buscarTarefa({ tarefaId: filhaId });
+
+      if (!resultado.sucesso || !resultado.data) {
+        throw new Error(
+          resultado.mensagem || "Não foi possível carregar a tarefa filha.",
+        );
+      }
+
+      const detalhe = resultado.data;
+
+      if (detalhe.tipo !== "filha") {
+        return null;
+      }
+
+      return {
+        titulo: detalhe.titulo,
+        descricao: detalhe.descricao ?? "",
+        equipeId: detalhe.equipeId ?? "",
+        categoriaId: detalhe.categoria?.id ?? "",
+        prioridade: detalhe.prioridade ?? "media",
+        dataEntrega: detalhe.dataEntrega,
+        horaEntrega: detalhe.horaEntrega ?? "",
+        responsavelIds: detalhe.responsaveis.map((item) => item.id),
+        status: detalhe.status,
+      };
+    } catch (error) {
+      setErroAcao(
+        error instanceof Error
+          ? error.message
+          : "Erro ao carregar tarefa filha.",
+      );
+      return null;
+    }
+  }
+
+  async function handleSalvarFilhaPersistida(
+    filhaId: string,
+    values: {
+      titulo: string;
+      descricao?: string | null;
+      equipeId: string;
+      categoriaId: string;
+      prioridade?: "urgente" | "alta" | "media" | "baixa";
+      dataEntrega: string;
+      horaEntrega?: string | null;
+      responsavelIds: string[];
+      status?: StatusTarefa;
+    },
+  ) {
+    setErroAcao(null);
+    setSubmittingModal(true);
+
+    try {
+      const resultado = await editarTarefa({
+        id: filhaId,
+        tipo: "filha",
+        titulo: values.titulo,
+        descricao: values.descricao ?? null,
+        equipeId: values.equipeId,
+        categoriaId: values.categoriaId,
+        prioridade: values.prioridade ?? "media",
+        status: values.status ?? "a_fazer",
+        dataEntrega: values.dataEntrega,
+        horaEntrega: values.horaEntrega ?? null,
+        responsavelIds: values.responsavelIds,
+        tarefaPaiId:
+          tarefaAtual && tarefaAtual.tipo === "pai" ? tarefaAtual.id : undefined,
+        links: [],
+      });
+
+      if (!resultado.sucesso || !resultado.data) {
+        throw new Error(
+          resultado.mensagem || "Não foi possível salvar a tarefa filha.",
+        );
+      }
+
+      if (tarefaAtual && tarefaAtual.tipo === "pai") {
+        await recarregarDetalheAtual(tarefaAtual.id);
+      }
+    } catch (error) {
+      setErroAcao(
+        error instanceof Error
+          ? error.message
+          : "Erro ao salvar tarefa filha.",
+      );
+    } finally {
+      setSubmittingModal(false);
     }
   }
 
   return (
     <div className="space-y-6">
       {erroInicial ? (
-        <div className="rounded-2xl p-4 text-sm" style={{ border: "1px solid #6b2328", backgroundColor: "#2a1316", color: "#fecaca" }}>
+        <div
+          className="rounded-2xl p-4 text-sm"
+          style={{
+            border: "1px solid #6b2328",
+            backgroundColor: "#2a1316",
+            color: "#fecaca",
+          }}
+        >
           {erroInicial}
         </div>
       ) : null}
 
       {erroAcao ? (
-        <div className="rounded-2xl p-4 text-sm" style={{ border: "1px solid #6b2328", backgroundColor: "#2a1316", color: "#fecaca" }}>
+        <div
+          className="rounded-2xl p-4 text-sm"
+          style={{
+            border: "1px solid #6b2328",
+            backgroundColor: "#2a1316",
+            color: "#fecaca",
+          }}
+        >
           {erroAcao}
         </div>
       ) : null}
 
       {loadingTarefa ? (
-        <div className="rounded-2xl p-4 text-sm" style={{ backgroundColor: "var(--surface-1)", border: "1px solid var(--border)", color: "var(--text-3)" }}>
+        <div
+          className="rounded-2xl p-4 text-sm"
+          style={{
+            backgroundColor: "var(--surface-1)",
+            border: "1px solid var(--border)",
+            color: "var(--text-3)",
+          }}
+        >
           Carregando tarefa...
         </div>
       ) : null}
@@ -577,8 +808,10 @@ export function TarefasPageClient({
           onChangeFiltros={setFiltrosObjetivos}
           podeCriarObjetivos={podeCriarObjetivos}
           podeVerTodasEquipes={podeVerTodasEquipes}
-          onCriarObjetivo={() => setModal({ open: true, tipo: "pai", isNew: true })}
-          onAbrirObjetivo={(objetivoId) => abrirTarefaPorId(objetivoId)}
+          onCriarObjetivo={() =>
+            setModal({ open: true, mode: "create", tipo: "pai" })
+          }
+          onAbrirObjetivo={(objetivoId) => abrirTarefaPorId(objetivoId, "view")}
         />
       ) : null}
 
@@ -594,15 +827,15 @@ export function TarefasPageClient({
         podeVerObjetivos={podeVerObjetivos}
         podeVerTodasEquipes={podeVerTodasEquipes}
         objetivosTituloMap={objetivosTituloMap}
-        onCriarTarefa={() => setModal({ open: true, tipo: "orfa", isNew: true })}
-        onAbrirTarefa={(taskId) => abrirTarefaPorId(taskId)}
+        onCriarTarefa={() => setModal({ open: true, mode: "create", tipo: "orfa" })}
+        onAbrirTarefa={(taskId) => abrirTarefaPorId(taskId, "view")}
         onMoverCardKanban={moverCardKanban}
       />
 
       {modal.open && modal.tipo === "pai" ? (
         <TarefaPaiModal
           open
-          isNew={modal.isNew}
+          isNew={modal.mode === "create"}
           tarefa={tarefaAtual?.tipo === "pai" ? tarefaAtual : null}
           usuarios={usuariosIniciais}
           categorias={categoriasIniciais}
@@ -611,14 +844,19 @@ export function TarefasPageClient({
           podeModerarComentarios
           podeSelecionarObjetivoGlobal={podeSelecionarObjetivoGlobal}
           onClose={fecharModal}
-          onAtualizarStatus={handleAtualizarStatus}
           onReabrir={handleReabrir}
-          onSubmit={async (values: PayloadModalPai, extras) => {
-            if (modal.isNew) {
-              await criarObjetivoComDependencias(values as CriarTarefaInput, extras);
+          onCarregarFilhaPersistida={handleCarregarFilhaPersistida}
+          onSalvarFilhaPersistida={handleSalvarFilhaPersistida}
+          onSubmit={async (values: PayloadModalPai) => {
+            if (modal.mode === "create") {
+              await criarNovaTarefa(values as CriarTarefaInput);
               return;
             }
+
             await salvarEdicaoTarefa(values as Omit<EditarTarefaInput, "id">);
+            if (tarefaAtual?.id) {
+              await recarregarDetalheAtual(tarefaAtual.id);
+            }
           }}
           onAdicionarComentario={handleAdicionarComentario}
           onEditarComentario={handleEditarComentario}
@@ -629,10 +867,11 @@ export function TarefasPageClient({
       {modal.open && (modal.tipo === "filha" || modal.tipo === "orfa") ? (
         <TarefaOperacionalModal
           open
-          mode={modal.isNew ? "create" : "edit"}
+          mode={modal.mode}
           tipo={modal.tipo}
           tarefa={
-            tarefaAtual && (tarefaAtual.tipo === "filha" || tarefaAtual.tipo === "orfa")
+            tarefaAtual &&
+            (tarefaAtual.tipo === "filha" || tarefaAtual.tipo === "orfa")
               ? tarefaAtual
               : null
           }
@@ -643,16 +882,45 @@ export function TarefasPageClient({
           categorias={categoriasIniciais}
           tarefasPaiOptions={tarefasPaiOptions}
           onClose={fecharModal}
-          onEditRequest={() => undefined}
-          onViewRequest={() => undefined}
+          onEditRequest={() => {
+            if (
+              !tarefaAtual ||
+              (tarefaAtual.tipo !== "filha" && tarefaAtual.tipo !== "orfa")
+            ) {
+              return;
+            }
+
+            setModal({
+              open: true,
+              mode: "edit",
+              tipo: tarefaAtual.tipo,
+              tarefaId: tarefaAtual.id,
+            });
+          }}
+          onViewRequest={() => {
+            if (
+              !tarefaAtual ||
+              (tarefaAtual.tipo !== "filha" && tarefaAtual.tipo !== "orfa")
+            ) {
+              return;
+            }
+
+            setModal({
+              open: true,
+              mode: "view",
+              tipo: tarefaAtual.tipo,
+              tarefaId: tarefaAtual.id,
+            });
+          }}
           onAtualizarStatus={handleAtualizarStatus}
           onReabrir={handleReabrir}
           onExcluir={handleExcluirTarefa}
           onSubmit={async (values: PayloadModalOperacional) => {
-            if (modal.isNew) {
+            if (modal.mode === "create") {
               await criarNovaTarefa(values as CriarTarefaInput);
               return;
             }
+
             await salvarEdicaoTarefa(values as Omit<EditarTarefaInput, "id">);
           }}
           onAdicionarComentario={handleAdicionarComentario}
@@ -662,8 +930,17 @@ export function TarefasPageClient({
       ) : null}
 
       {submittingModal || processingComment ? (
-        <div className="fixed bottom-4 right-4 rounded-2xl px-4 py-3 text-sm shadow-xl" style={{ border: "1px solid var(--border)", backgroundColor: "var(--surface-1)", color: "var(--text-2)" }}>
-          {submittingModal ? "Salvando alterações..." : "Atualizando comentários..."}
+        <div
+          className="fixed bottom-4 right-4 rounded-2xl px-4 py-3 text-sm shadow-xl"
+          style={{
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--surface-1)",
+            color: "var(--text-2)",
+          }}
+        >
+          {submittingModal
+            ? "Salvando alterações..."
+            : "Atualizando comentários..."}
         </div>
       ) : null}
     </div>
