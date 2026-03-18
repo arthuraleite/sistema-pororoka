@@ -77,12 +77,24 @@ type Props = {
   formId?: string;
   hideInternalSubmit?: boolean;
   hideProjetoWhenEscopoEquipe?: boolean;
+  lockEquipe?: boolean;
+  lockTarefaPai?: boolean;
   lockEquipeSelection?: boolean;
   lockTarefaPaiSelection?: boolean;
   onTituloChange?: (titulo: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
 };
 
+
+type FormErrors = Partial<{
+  titulo: string;
+  tarefaPaiId: string;
+  equipeId: string;
+  categoriaId: string;
+  prioridade: string;
+  dataEntrega: string;
+  responsavelIds: string;
+}>;
 const prioridades: Array<{ value: PrioridadeTarefa; label: string }> = [
   { value: "urgente", label: "Urgente" },
   { value: "alta", label: "Alta" },
@@ -230,12 +242,16 @@ export function TarefaFormBase({
   formId,
   hideInternalSubmit = false,
   hideProjetoWhenEscopoEquipe = false,
+  lockEquipe = false,
+  lockTarefaPai = false,
   lockEquipeSelection = false,
   lockTarefaPaiSelection = false,
   onTituloChange,
   onDirtyChange,
 }: Props) {
   const readonly = mode === "view";
+  const equipeTravada = lockEquipe || lockEquipeSelection;
+  const tarefaPaiTravada = lockTarefaPai || lockTarefaPaiSelection;
 
   const [tipoAtual, setTipoAtual] = useState<TipoTarefa>(tipo);
   const [escopoObjetivo, setEscopoObjetivo] = useState<EscopoObjetivo>(
@@ -261,6 +277,7 @@ export function TarefaFormBase({
   );
   const [links, setLinks] = useState<LinkItem[]>(initialValues?.links ?? []);
   const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
 
   const [categoriasCriadasLocalmente, setCategoriasCriadasLocalmente] = useState<
     CategoriaTarefa[]
@@ -417,6 +434,21 @@ export function TarefaFormBase({
     return usuarios.filter((usuario) => usuario.perfil !== "analista_financeiro");
   }, [tipoAtual, usuarios]);
 
+  function validarFormulario(): FormErrors {
+    const nextErrors: FormErrors = {};
+
+    if (!titulo.trim()) nextErrors.titulo = "Informe o título.";
+    if (!dataEntrega) nextErrors.dataEntrega = "Informe a data de entrega.";
+    if (tipoAtual === "filha" && !tarefaPaiId) nextErrors.tarefaPaiId = "Selecione o objetivo-pai.";
+    if (tipoAtual === "pai" && escopoObjetivo === "equipe" && !equipeId) nextErrors.equipeId = "Selecione a equipe.";
+    if (tipoAtual !== "pai" && !equipeId) nextErrors.equipeId = "Selecione a equipe.";
+    if (tipoAtual !== "pai" && !categoriaId) nextErrors.categoriaId = "Selecione a categoria.";
+    if (tipoAtual !== "pai" && !prioridade) nextErrors.prioridade = "Selecione a prioridade.";
+    if (responsavelIds.length === 0) nextErrors.responsavelIds = "Selecione ao menos um responsável.";
+
+    return nextErrors;
+  }
+
   async function handleCriarCategoria() {
     setErroCategoria(null);
 
@@ -466,14 +498,11 @@ export function TarefaFormBase({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (readonly || !onSubmit) return;
-    if (!titulo.trim()) return;
-    if (!dataEntrega) return;
-    if (tipoAtual === "filha" && !tarefaPaiId) return;
-    if (tipoAtual === "pai" && escopoObjetivo === "equipe" && !equipeId) return;
-    if (tipoAtual !== "pai" && !equipeId) return;
-    if (tipoAtual !== "pai" && !categoriaId) return;
-    if (tipoAtual !== "pai" && !prioridade) return;
-    if (responsavelIds.length === 0) return;
+
+    const nextErrors = validarFormulario();
+    setErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) return;
 
     const linksNormalizados = links
       .map((link) => ({
@@ -560,23 +589,26 @@ export function TarefaFormBase({
             <div className="space-y-5">
               <div>
                 <FieldLabel>{tipoAtual === "pai" ? "Título do objetivo" : "Título"}</FieldLabel>
-                <input
-                  type="text"
-                  value={titulo}
-                  onChange={(event) => setTitulo(event.target.value)}
-                  disabled={readonly}
-                  className={inputClass(readonly)}
-                  style={{
-                    backgroundColor: "var(--input)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text-1)",
-                  }}
-                  placeholder={
-                    tipoAtual === "pai"
-                      ? "Ex.: Estruturar ciclo de mobilização"
-                      : "Título da tarefa"
-                  }
-                />
+                  <input
+                    type="text"
+                    value={titulo}
+                    onChange={(event) => {
+                      setTitulo(event.target.value);
+                      setErrors((current) => ({ ...current, titulo: undefined }));
+                    }}
+                    disabled={readonly}
+                    className={inputClass(readonly)}
+                    style={{
+                      backgroundColor: "var(--input)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-1)",
+                    }}
+                    placeholder={
+                      tipoAtual === "pai"
+                        ? "Ex.: Estruturar ciclo de mobilização"
+                        : "Título da tarefa"
+                    }
+                  />
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -611,7 +643,7 @@ export function TarefaFormBase({
                 ) : null}
 
                 {tipoAtual === "filha" ? (
-                  lockTarefaPaiSelection ? (
+                  tarefaPaiTravada ? (
                     <div>
                       <FieldLabel icon={<FolderKanban className="h-4 w-4" />}>
                         Objetivo-pai
@@ -643,7 +675,7 @@ export function TarefaFormBase({
                           <DropdownOption
                             key={item.id}
                             onClick={() => {
-                              setTarefaPaiId(item.id);
+                              setTarefaPaiId(item.id); setErrors((current) => ({ ...current, tarefaPaiId: undefined }));
                               setMostrarTarefaPaiMenu(false);
                             }}
                           >
@@ -653,6 +685,11 @@ export function TarefaFormBase({
                       </div>
                     </DropdownField>
                   )
+                ) : null}
+                {errors.tarefaPaiId ? (
+                  <p className="-mt-2 text-xs md:col-span-2 xl:col-span-4" style={{ color: "var(--danger)" }}>
+                    {errors.tarefaPaiId}
+                  </p>
                 ) : null}
 
                 {mostrarProjeto ? (
@@ -675,7 +712,7 @@ export function TarefaFormBase({
                 ) : null}
 
                 {mostrarCampoEquipe ? (
-                  lockEquipeSelection || equipes.length <= 1 ? (
+                  equipeTravada || equipes.length <= 1 ? (
                     <div>
                       <FieldLabel icon={<Users className="h-4 w-4" />}>Equipe</FieldLabel>
                       <input
@@ -705,7 +742,7 @@ export function TarefaFormBase({
                           <DropdownOption
                             key={equipe.id}
                             onClick={() => {
-                              setEquipeId(equipe.id);
+                              setEquipeId(equipe.id); setErrors((current) => ({ ...current, equipeId: undefined }));
                               setCategoriaId("");
                               setCategoriaBusca("");
                               setMostrarEquipeMenu(false);
@@ -717,6 +754,11 @@ export function TarefaFormBase({
                       </div>
                     </DropdownField>
                   )
+                ) : null}
+                {errors.equipeId ? (
+                  <p className="-mt-2 text-xs md:col-span-2 xl:col-span-4" style={{ color: "var(--danger)" }}>
+                    {errors.equipeId}
+                  </p>
                 ) : null}
 
                 {allowCategoria && tipoAtual !== "pai" ? (
@@ -821,7 +863,7 @@ export function TarefaFormBase({
                                     key={categoria.id}
                                     type="button"
                                     onClick={() => {
-                                      setCategoriaId(categoria.id);
+                                      setCategoriaId(categoria.id); setErrors((current) => ({ ...current, categoriaId: undefined }));
                                       setCategoriaBusca("");
                                       setMostrarCategoriaPopover(false);
                                     }}
@@ -850,6 +892,11 @@ export function TarefaFormBase({
                     ) : null}
                   </div>
                 ) : null}
+                {errors.categoriaId ? (
+                  <p className="-mt-2 text-xs md:col-span-2 xl:col-span-4" style={{ color: "var(--danger)" }}>
+                    {errors.categoriaId}
+                  </p>
+                ) : null}
 
                 {allowPrioridade ? (
                   <DropdownField
@@ -866,7 +913,7 @@ export function TarefaFormBase({
                         <DropdownOption
                           key={item.value}
                           onClick={() => {
-                            setPrioridade(item.value);
+                            setPrioridade(item.value); setErrors((current) => ({ ...current, prioridade: undefined }));
                             setMostrarPrioridadeMenu(false);
                           }}
                         >
@@ -875,6 +922,11 @@ export function TarefaFormBase({
                       ))}
                     </div>
                   </DropdownField>
+                ) : null}
+                {errors.prioridade ? (
+                  <p className="-mt-2 text-xs md:col-span-2 xl:col-span-4" style={{ color: "var(--danger)" }}>
+                    {errors.prioridade}
+                  </p>
                 ) : null}
 
                 {allowStatus ? (
@@ -910,7 +962,10 @@ export function TarefaFormBase({
                   <input
                     type="date"
                     value={dataEntrega}
-                    onChange={(event) => setDataEntrega(event.target.value)}
+                    onChange={(event) => {
+                      setDataEntrega(event.target.value);
+                      setErrors((current) => ({ ...current, dataEntrega: undefined }));
+                    }}
                     disabled={readonly}
                     className={inputClass(readonly)}
                     style={{
@@ -919,6 +974,11 @@ export function TarefaFormBase({
                       color: "var(--text-1)",
                     }}
                   />
+                  {errors.dataEntrega ? (
+                    <p className="mt-2 text-xs" style={{ color: "var(--danger)" }}>
+                      {errors.dataEntrega}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div>
@@ -960,7 +1020,7 @@ export function TarefaFormBase({
           <TarefaResponsaveisField
             usuarios={usuariosElegiveis}
             value={responsavelIds}
-            onChange={setResponsavelIds}
+            onChange={(value) => { setResponsavelIds(value); setErrors((current) => ({ ...current, responsavelIds: undefined })); }}
             disabled={readonly}
             label="Responsáveis"
             description={`Selecione as pessoas responsáveis pelo acompanhamento deste ${
@@ -968,6 +1028,11 @@ export function TarefaFormBase({
             }.`}
             minCount={1}
           />
+          {errors.responsavelIds ? (
+            <p className="-mt-3 text-xs" style={{ color: "var(--danger)" }}>
+              {errors.responsavelIds}
+            </p>
+          ) : null}
 
           <TarefaLinksField
             value={links}

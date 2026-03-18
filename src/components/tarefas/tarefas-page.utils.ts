@@ -170,6 +170,15 @@ export function aplicarFiltrosLocais(
     });
   }
 
+  if (filtros.categoriaIds?.length) {
+    resultado = resultado.filter((item) => {
+      if (item.tipo === "pai") return false;
+      if (!item.categoria?.id) return false;
+
+      return filtros.categoriaIds?.includes(item.categoria.id);
+    });
+  }
+
   if (filtros.busca?.trim()) {
     const termo = filtros.busca.trim().toLowerCase();
 

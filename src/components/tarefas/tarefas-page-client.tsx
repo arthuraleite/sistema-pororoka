@@ -157,7 +157,12 @@ export function TarefasPageClient({
     ? resultadoInicial.mensagem
     : null;
 
-  const perfilAtual = usuarioAtual?.perfil ?? null;
+  const perfilAtualOriginal = usuarioAtual?.perfil ?? null;
+
+  const perfilAtual =
+    perfilAtualOriginal === "gestor_financeiro"
+      ? "coordenador_equipe"
+      : perfilAtualOriginal;
 
   const podeVerObjetivos = [
     "admin_supremo",
@@ -232,6 +237,18 @@ export function TarefasPageClient({
     () => aplicarFiltrosLocais(tarefasBase, filtrosTarefas),
     [tarefasBase, filtrosTarefas],
   );
+
+  const categoriasFiltroTarefas = useMemo(() => {
+    const equipeSelecionadaId = filtrosTarefas.equipeIds?.[0] ?? "";
+
+    if (!equipeSelecionadaId) {
+      return [];
+    }
+
+    return categoriasIniciais.filter(
+      (categoria) => categoria.equipeId === equipeSelecionadaId,
+    );
+  }, [categoriasIniciais, filtrosTarefas.equipeIds]);
 
   const objetivosTituloMap = useMemo(
     () => new Map(objetivosBase.map((objetivo) => [objetivo.id, objetivo.titulo])),
@@ -746,11 +763,10 @@ export function TarefasPageClient({
         await recarregarDetalheAtual(tarefaAtual.id);
       }
     } catch (error) {
-      setErroAcao(
-        error instanceof Error
-          ? error.message
-          : "Erro ao salvar tarefa filha.",
-      );
+      const mensagem =
+        error instanceof Error ? error.message : "Erro ao salvar tarefa filha.";
+      setErroAcao(mensagem);
+      throw error instanceof Error ? error : new Error(mensagem);
     } finally {
       setSubmittingModal(false);
     }
@@ -824,6 +840,7 @@ export function TarefasPageClient({
         onChangeFiltros={setFiltrosTarefas}
         usuarios={usuariosIniciais}
         equipes={equipesIniciais}
+        categorias={categoriasFiltroTarefas}
         podeVerObjetivos={podeVerObjetivos}
         podeVerTodasEquipes={podeVerTodasEquipes}
         objetivosTituloMap={objetivosTituloMap}

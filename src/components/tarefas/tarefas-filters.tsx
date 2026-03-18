@@ -4,6 +4,7 @@ import type { ChangeEvent } from "react";
 
 import type { EquipeTarefaOption } from "@/actions/tarefas/listar-equipes-tarefas";
 import type {
+  CategoriaTarefa,
   PrioridadeTarefa,
   StatusTarefa,
   TarefasFiltros,
@@ -17,6 +18,7 @@ type Props = {
   onChange: (filtros: TarefasFiltros) => void;
   compact?: boolean;
   equipes?: EquipeTarefaOption[];
+  categorias?: CategoriaTarefa[];
   mostrarFiltroEscopoObjetivo?: boolean;
 };
 
@@ -88,6 +90,7 @@ function possuiFiltrosAtivos(filtros: TarefasFiltros) {
       filtros.prioridades?.length ||
       filtros.responsavelIds?.length ||
       filtros.equipeIds?.length ||
+      filtros.categoriaIds?.length ||
       filtros.dataInicio ||
       filtros.dataFim ||
       filtros.apenasAtrasadas ||
@@ -138,6 +141,11 @@ function labelEquipe(id: string | undefined, equipes: EquipeTarefaOption[]) {
   return equipes.find((equipe) => equipe.id === id)?.nome ?? "Equipe";
 }
 
+function labelCategoria(id: string | undefined, categorias: CategoriaTarefa[]) {
+  if (!id) return null;
+  return categorias.find((categoria) => categoria.id === id)?.nome ?? "Categoria";
+}
+
 export function TarefasFilters({
   contexto,
   filtros,
@@ -145,10 +153,16 @@ export function TarefasFilters({
   onChange,
   compact = false,
   equipes = [],
+  categorias = [],
   mostrarFiltroEscopoObjetivo = false,
 }: Props) {
   const isObjetivos = contexto === "objetivos";
   const mostrarFiltroEquipe = !isObjetivos && equipes.length > 0;
+  const mostrarFiltroCategoria = !isObjetivos;
+  const categoriasDisponiveis = filtros.equipeIds?.[0]
+    ? categorias.filter((categoria) => categoria.equipeId === filtros.equipeIds?.[0])
+    : [];
+  const filtroCategoriaDesabilitado = mostrarFiltroEquipe && !filtros.equipeIds?.[0];
   const filtrosAtivos = possuiFiltrosAtivos(filtros);
 
   function handleBusca(event: ChangeEvent<HTMLInputElement>) {
@@ -189,6 +203,16 @@ export function TarefasFilters({
     onChange({
       ...filtros,
       equipeIds: value ? [value] : [],
+      categoriaIds: [],
+    });
+  }
+
+  function handleCategoriaChange(event: ChangeEvent<HTMLSelectElement>) {
+    const value = event.target.value;
+
+    onChange({
+      ...filtros,
+      categoriaIds: value ? [value] : [],
     });
   }
 
@@ -233,8 +257,8 @@ export function TarefasFilters({
         ? "md:grid-cols-2 xl:grid-cols-[1.4fr_repeat(5,minmax(0,1fr))]"
         : "md:grid-cols-2 xl:grid-cols-[1.5fr_repeat(4,minmax(0,1fr))]"
       : mostrarFiltroEquipe
-        ? "md:grid-cols-2 xl:grid-cols-[1.45fr_repeat(5,minmax(0,1fr))]"
-        : "md:grid-cols-2 xl:grid-cols-[1.5fr_repeat(4,minmax(0,1fr))]",
+        ? "xl:grid-cols-[minmax(220px,1.55fr)_repeat(6,minmax(140px,1fr))]"
+        : "xl:grid-cols-[minmax(220px,1.55fr)_repeat(5,minmax(140px,1fr))]",
   ].join(" ");
 
   const gridClassDefault = [
@@ -244,8 +268,8 @@ export function TarefasFilters({
         ? "md:grid-cols-2 xl:grid-cols-6"
         : "md:grid-cols-2 xl:grid-cols-5"
       : mostrarFiltroEquipe
-        ? "md:grid-cols-2 xl:grid-cols-6"
-        : "md:grid-cols-2 xl:grid-cols-[1.5fr_repeat(4,minmax(0,1fr))]",
+        ? "xl:grid-cols-[minmax(220px,1.55fr)_repeat(6,minmax(140px,1fr))]"
+        : "xl:grid-cols-[minmax(220px,1.55fr)_repeat(5,minmax(140px,1fr))]",
   ].join(" ");
 
   const filtrosAtivosNode = filtrosAtivos ? (
@@ -268,6 +292,12 @@ export function TarefasFilters({
       {filtros.equipeIds?.[0] ? (
         <span className="badge-neutral rounded-full px-3 py-1 text-[11px]">
           Equipe: {labelEquipe(filtros.equipeIds[0], equipes)}
+        </span>
+      ) : null}
+
+      {filtros.categoriaIds?.[0] ? (
+        <span className="badge-neutral rounded-full px-3 py-1 text-[11px]">
+          Categoria: {labelCategoria(filtros.categoriaIds[0], categorias)}
         </span>
       ) : null}
 
@@ -320,7 +350,8 @@ export function TarefasFilters({
           backgroundColor: "var(--surface-0)",
         }}
       >
-        <div className={gridClassCompact}>
+        <div className="overflow-x-auto">
+          <div className={`${gridClassCompact} min-w-[1180px] xl:min-w-0`}>
           <div>
             <label className={labelClassName} style={labelStyle}>
               Buscar
@@ -372,6 +403,28 @@ export function TarefasFilters({
                 {equipes.map((equipe) => (
                   <option key={equipe.id} value={equipe.id}>
                     {equipe.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          {mostrarFiltroCategoria ? (
+            <div>
+              <label className={labelClassName} style={labelStyle}>
+                Categoria
+              </label>
+              <select
+                value={filtros.categoriaIds?.[0] ?? ""}
+                onChange={handleCategoriaChange}
+                disabled={filtroCategoriaDesabilitado}
+                className={fieldClassName(true)}
+                style={fieldStyle()}
+              >
+                <option value="">{filtroCategoriaDesabilitado ? "Selecione uma equipe" : "Todas"}</option>
+                {categoriasDisponiveis.map((categoria) => (
+                  <option key={categoria.id} value={categoria.id}>
+                    {categoria.nome}
                   </option>
                 ))}
               </select>
@@ -452,6 +505,7 @@ export function TarefasFilters({
               ))}
             </select>
           </div>
+          </div>
         </div>
 
         {filtrosAtivosNode}
@@ -478,7 +532,8 @@ export function TarefasFilters({
         />
       </div>
 
-      <div className={gridClassDefault}>
+      <div className="overflow-x-auto">
+        <div className={`${gridClassDefault} min-w-[1180px] xl:min-w-0`}>
         <div>
           <label className={labelClassName} style={labelStyle}>
             Buscar
@@ -532,6 +587,28 @@ export function TarefasFilters({
               {equipes.map((equipe) => (
                 <option key={equipe.id} value={equipe.id}>
                   {equipe.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {mostrarFiltroCategoria ? (
+          <div>
+            <label className={labelClassName} style={labelStyle}>
+              Categoria
+            </label>
+            <select
+              value={filtros.categoriaIds?.[0] ?? ""}
+              onChange={handleCategoriaChange}
+              disabled={filtroCategoriaDesabilitado}
+              className={fieldClassName(false)}
+              style={fieldStyle()}
+            >
+              <option value="">{filtroCategoriaDesabilitado ? "Selecione uma equipe" : "Todas"}</option>
+              {categoriasDisponiveis.map((categoria) => (
+                <option key={categoria.id} value={categoria.id}>
+                  {categoria.nome}
                 </option>
               ))}
             </select>
@@ -611,6 +688,7 @@ export function TarefasFilters({
               </option>
             ))}
           </select>
+        </div>
         </div>
       </div>
 

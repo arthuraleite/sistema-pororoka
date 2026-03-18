@@ -7,6 +7,7 @@ import { TarefasTable } from "@/components/tarefas/tarefas-table";
 import { TarefasViewSwitcher } from "@/components/tarefas/tarefas-view-switcher";
 import { TarefasWeekCalendar } from "@/components/tarefas/tarefas-calendar";
 import type {
+  CategoriaTarefa,
   Tarefa,
   TarefaKanbanCard,
   TarefasFiltros,
@@ -24,6 +25,7 @@ type Props = {
   onChangeFiltros: (filtros: TarefasFiltros) => void;
   usuarios: UsuarioResumoTarefa[];
   equipes: EquipeTarefaOption[];
+  categorias: CategoriaTarefa[];
   podeVerObjetivos: boolean;
   podeVerTodasEquipes: boolean;
   objetivosTituloMap: Map<string, string>;
@@ -44,6 +46,7 @@ export function TarefasSection({
   onChangeFiltros,
   usuarios,
   equipes,
+  categorias,
   podeVerObjetivos,
   podeVerTodasEquipes,
   objetivosTituloMap,
@@ -102,6 +105,7 @@ export function TarefasSection({
         filtros={filtros}
         usuarios={usuarios}
         equipes={podeVerTodasEquipes ? equipes : []}
+        categorias={categorias}
         onChange={onChangeFiltros}
         compact
       />
