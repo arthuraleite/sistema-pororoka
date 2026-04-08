@@ -1,7 +1,11 @@
 "use server";
 
 import { criarClienteSupabaseServidor } from "@/lib/supabase/servidor";
-import { listarOpcoesProjetosParaFormulario } from "@/services/projetos/projetos.service";
+import {
+  listarCoordenadoresProjetoService,
+  listarFinanciadoresProjetoService,
+  listarRubricasGlobaisProjetoService,
+} from "@/services/projetos/projetos.service";
 import type {
   OpcoesProjetos,
   ResultadoOperacaoProjeto,
@@ -25,12 +29,24 @@ export async function listarOpcoesProjetos(): Promise<
       };
     }
 
-    const data = await listarOpcoesProjetosParaFormulario(user.id);
+    const [coordenadores, financiadores, rubricasGlobais] = await Promise.all([
+      listarCoordenadoresProjetoService(user.id),
+      listarFinanciadoresProjetoService(user.id),
+      listarRubricasGlobaisProjetoService(user.id),
+    ]);
 
     return {
       sucesso: true,
       mensagem: "Opções carregadas com sucesso.",
-      data,
+      data: {
+        coordenadores,
+        financiadores,
+        rubricasGlobais: rubricasGlobais.map((item) => ({
+          id: item.id,
+          nome: item.nome,
+          descricao: null,
+        })),
+      },
     };
   } catch (error) {
     return {

@@ -4,6 +4,9 @@ import type { ProjetoListItem } from "@/types/projetos/projetos.types";
 
 type Props = {
   projetos: ProjetoListItem[];
+  onVisualizar?: (projetoId: string) => void;
+  onEditar?: (projetoId: string) => void;
+  podeEditar?: boolean;
 };
 
 function formatarMoeda(valor: number | null) {
@@ -49,7 +52,12 @@ function classeStatus(status: ProjetoListItem["status"]) {
   }
 }
 
-export function ProjetosLista({ projetos }: Props) {
+export function ProjetosLista({
+  projetos,
+  onVisualizar,
+  onEditar,
+  podeEditar = false,
+}: Props) {
   if (projetos.length === 0) {
     return (
       <section
@@ -108,6 +116,9 @@ export function ProjetosLista({ projetos }: Props) {
               <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--text-4)" }}>
                 Objetivos
               </th>
+              <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--text-4)" }}>
+                Ações
+              </th>
             </tr>
           </thead>
 
@@ -115,9 +126,7 @@ export function ProjetosLista({ projetos }: Props) {
             {projetos.map((projeto) => (
               <tr
                 key={projeto.id}
-                style={{
-                  borderBottom: "1px solid var(--border)",
-                }}
+                style={{ borderBottom: "1px solid var(--border)" }}
               >
                 <td className="px-4 py-4 align-top">
                   <div className="space-y-1">
@@ -176,6 +185,28 @@ export function ProjetosLista({ projetos }: Props) {
                   style={{ color: "var(--text-2)" }}
                 >
                   {projeto.total_objetivos_concluidos}/{projeto.total_objetivos}
+                </td>
+
+                <td className="px-4 py-4">
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onVisualizar?.(projeto.id)}
+                      className="button-neutral inline-flex h-9 items-center rounded-xl px-3 text-xs font-medium"
+                    >
+                      Visualizar
+                    </button>
+
+                    {podeEditar ? (
+                      <button
+                        type="button"
+                        onClick={() => onEditar?.(projeto.id)}
+                        className="button-primary inline-flex h-9 items-center rounded-xl px-3 text-xs font-medium"
+                      >
+                        Editar
+                      </button>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}

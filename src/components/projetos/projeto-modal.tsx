@@ -8,13 +8,9 @@ import type {
   FinanciadorProjetoOption,
   ProjetoDetalhe,
   ProjetoFormData,
+  RubricaGlobalProjetoOption,
   UsuarioCoordenadorProjetoOption,
 } from "@/types/projetos/projetos.types";
-
-type RubricaGlobalOption = {
-  id: string;
-  nome: string;
-};
 
 type Props = {
   open: boolean;
@@ -22,12 +18,14 @@ type Props = {
   projeto?: ProjetoDetalhe | null;
   coordenadores: UsuarioCoordenadorProjetoOption[];
   financiadores: FinanciadorProjetoOption[];
-  rubricasGlobais: RubricaGlobalOption[];
+  rubricasGlobais: RubricaGlobalProjetoOption[];
   submitting?: boolean;
   onClose: () => void;
   onSubmit?: (values: ProjetoFormData) => void | Promise<void>;
   onCriarFinanciador?: (nome: string) => Promise<FinanciadorProjetoOption | null>;
-  onCriarRubricaGlobal?: (nome: string) => Promise<RubricaGlobalOption | null>;
+  onCriarRubricaGlobal?: (
+    nome: string,
+  ) => Promise<RubricaGlobalProjetoOption | null>;
   onAbrirTarefasProjeto?: (projetoId: string) => void;
 };
 
@@ -81,6 +79,7 @@ export function ProjetoModal({
       data_fim: projeto.data_fim,
       financiador_id: projeto.financiador_id,
       orcamento_total: projeto.orcamento_total,
+      status: projeto.status,
       observacoes: projeto.observacoes,
       links: projeto.links.map((item) => ({
         titulo: item.titulo,

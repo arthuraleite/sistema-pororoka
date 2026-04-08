@@ -1,17 +1,15 @@
 "use server";
 
 import { criarClienteSupabaseServidor } from "@/lib/supabase/servidor";
-import { criarFinanciador } from "@/services/projetos/projetos.service";
+import { criarFinanciadorProjetoService } from "@/services/projetos/projetos.service";
 import type {
   FinanciadorProjetoOption,
   ResultadoOperacaoProjeto,
 } from "@/types/projetos/projetos.types";
 
-export async function criarFinanciadorAction({
-  nome,
-}: {
-  nome: string;
-}): Promise<ResultadoOperacaoProjeto<FinanciadorProjetoOption>> {
+export async function criarFinanciador(
+  nome: string,
+): Promise<ResultadoOperacaoProjeto<FinanciadorProjetoOption>> {
   try {
     const supabase = await criarClienteSupabaseServidor();
 
@@ -27,14 +25,16 @@ export async function criarFinanciadorAction({
       };
     }
 
-    const data = await criarFinanciador(user.id, nome);
+    const financiador = await criarFinanciadorProjetoService(user.id, nome);
 
     return {
       sucesso: true,
       mensagem: "Financiador criado com sucesso.",
-      data,
+      data: financiador,
     };
   } catch (error) {
+    console.error("Erro ao criar financiador:", error);
+
     return {
       sucesso: false,
       mensagem:

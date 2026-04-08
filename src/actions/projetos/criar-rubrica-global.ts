@@ -1,15 +1,15 @@
 "use server";
 
 import { criarClienteSupabaseServidor } from "@/lib/supabase/servidor";
-import { listarFinanciadoresProjetoService } from "@/services/projetos/projetos.service";
+import { criarRubricaGlobalProjetoService } from "@/services/projetos/projetos.service";
 import type {
-  FinanciadorProjetoOption,
   ResultadoOperacaoProjeto,
+  RubricaGlobalProjetoOption,
 } from "@/types/projetos/projetos.types";
 
-export async function listarFinanciadores(): Promise<
-  ResultadoOperacaoProjeto<FinanciadorProjetoOption[]>
-> {
+export async function criarRubricaGlobal(
+  nome: string,
+): Promise<ResultadoOperacaoProjeto<RubricaGlobalProjetoOption>> {
   try {
     const supabase = await criarClienteSupabaseServidor();
 
@@ -25,22 +25,26 @@ export async function listarFinanciadores(): Promise<
       };
     }
 
-    const financiadores = await listarFinanciadoresProjetoService(user.id);
+    const rubrica = await criarRubricaGlobalProjetoService(user.id, nome);
 
     return {
       sucesso: true,
-      mensagem: "Financiadores carregados com sucesso.",
-      data: financiadores,
+      mensagem: "Rubrica global criada com sucesso.",
+      data: {
+        id: rubrica.id,
+        nome: rubrica.nome,
+        descricao: null,
+      },
     };
   } catch (error) {
-    console.error("Erro ao listar financiadores:", error);
+    console.error("Erro ao criar rubrica global:", error);
 
     return {
       sucesso: false,
       mensagem:
         error instanceof Error
           ? error.message
-          : "Não foi possível listar os financiadores.",
+          : "Não foi possível criar a rubrica global.",
     };
   }
 }
