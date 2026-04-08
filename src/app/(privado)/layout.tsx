@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { criarClienteSupabaseServidor } from "@/lib/supabase/servidor";
 import { verificarAcessoUsuario } from "@/services/auth/verificarAcessoUsuario";
 import { AppShell } from "@/components/layout/app-shell";
+import { usuarioTemProjetosCoordenados } from "@/services/projetos/projetos.service";
 
 type PropriedadesLayoutPrivado = {
   children: ReactNode;
@@ -39,6 +40,9 @@ export default async function LayoutPrivado({
   }
 
   const usuarioInterno = acesso.usuario;
+  const temProjetosCoordenados = await usuarioTemProjetosCoordenados(
+    usuarioInterno.id,
+  );
 
   return (
     <AppShell
@@ -49,6 +53,7 @@ export default async function LayoutPrivado({
       avatarUrl={user.user_metadata?.avatar_url ?? null}
       perfilUsuario={usuarioInterno.perfil}
       equipeNome={usuarioInterno.equipe?.nome ?? null}
+      temProjetosCoordenados={temProjetosCoordenados}
     >
       {children}
     </AppShell>

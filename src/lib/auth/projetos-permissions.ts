@@ -1,98 +1,53 @@
-import type { PerfilUsuario } from "@/types/configuracoes/usuarios.types";
-
-type UsuarioProjeto = {
+type UsuarioAutorizadoProjetos = {
   id: string;
-  perfil: PerfilUsuario;
-  status: "ativo" | "inativo";
+  perfil: string;
+  status: string;
 };
 
-type ProjetoPermissaoContexto = {
-  coordenador_id: string;
-};
-
-function usuarioAtivo(
-  usuario: UsuarioProjeto | null | undefined,
-): usuario is UsuarioProjeto {
-  return !!usuario && usuario.status === "ativo";
-}
-
-export function podeCriarProjeto(usuario: UsuarioProjeto | null | undefined) {
-  if (!usuarioAtivo(usuario)) return false;
-
-  return (
-    usuario.perfil === "admin_supremo" ||
-    usuario.perfil === "coordenador_geral"
-  );
-}
-
-export function podeListarProjetos(usuario: UsuarioProjeto | null | undefined) {
-  if (!usuarioAtivo(usuario)) return false;
+export function podeAcessarModuloProjetos(
+  usuario: UsuarioAutorizadoProjetos | null | undefined,
+) {
+  if (!usuario) return false;
+  if (usuario.status !== "ativo") return false;
 
   return [
     "admin_supremo",
     "coordenador_geral",
+    "gestor_financeiro",
     "coordenador_equipe",
     "assistente",
     "membro",
   ].includes(usuario.perfil);
 }
 
-export function podeVisualizarProjeto(
-  usuario: UsuarioProjeto | null | undefined,
-  projeto: ProjetoPermissaoContexto | null | undefined,
+export function podeVisualizarTodosProjetos(
+  usuario: UsuarioAutorizadoProjetos | null | undefined,
 ) {
-  if (!usuarioAtivo(usuario) || !projeto) return false;
+  if (!usuario) return false;
+  if (usuario.status !== "ativo") return false;
 
-  if (
-    usuario.perfil === "admin_supremo" ||
-    usuario.perfil === "coordenador_geral"
-  ) {
-    return true;
-  }
-
-  return projeto.coordenador_id === usuario.id;
-}
-
-export function podeEditarProjeto(
-  usuario: UsuarioProjeto | null | undefined,
-  projeto: ProjetoPermissaoContexto | null | undefined,
-) {
-  return podeVisualizarProjeto(usuario, projeto);
-}
-
-export function podeAlterarStatusProjeto(
-  usuario: UsuarioProjeto | null | undefined,
-  projeto: ProjetoPermissaoContexto | null | undefined,
-) {
-  return podeVisualizarProjeto(usuario, projeto);
-}
-
-export function podeAlterarCoordenadorProjeto(
-  usuario: UsuarioProjeto | null | undefined,
-) {
-  if (!usuarioAtivo(usuario)) return false;
-
-  return (
-    usuario.perfil === "admin_supremo" ||
-    usuario.perfil === "coordenador_geral"
+  return ["admin_supremo", "coordenador_geral", "gestor_financeiro"].includes(
+    usuario.perfil,
   );
 }
 
-export function podeCriarRubricaGlobalNoProjeto(
-  usuario: UsuarioProjeto | null | undefined,
+export function podeAdministrarProjetos(
+  usuario: UsuarioAutorizadoProjetos | null | undefined,
 ) {
-  if (!usuarioAtivo(usuario)) return false;
+  if (!usuario) return false;
+  if (usuario.status !== "ativo") return false;
 
-  return (
-    usuario.perfil === "admin_supremo" ||
-    usuario.perfil === "coordenador_geral" ||
-    usuario.perfil === "gestor_financeiro"
-  );
+  return ["admin_supremo", "coordenador_geral"].includes(usuario.perfil);
 }
 
-export function podeEditarRubricasProjeto(
-  usuario: UsuarioProjeto | null | undefined,
-  projeto: ProjetoPermissaoContexto | null | undefined,
+export function podeVerProjetoComoCoordenador(
+  usuario: UsuarioAutorizadoProjetos | null | undefined,
+  coordenadorId: string,
 ) {
-  return podeEditarProjeto(usuario, projeto);
+  if (!usuario) return false;
+  if (usuario.status !== "ativo") return false;
+
+  if (podeVisualizarTodosProjetos(usuario)) return true;
+
+  return usuario.id === coordenadorId;
 }

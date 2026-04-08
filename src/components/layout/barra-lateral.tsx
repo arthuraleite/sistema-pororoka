@@ -9,6 +9,7 @@ import { NavLinkItem } from "@/components/layout/nav-link-item";
 type PropriedadesSidebar = {
   perfilUsuario?: string | null;
   equipeNome?: string | null;
+  temProjetosCoordenados?: boolean;
   expandida?: boolean;
   sempreExpandida?: boolean;
   onExpandir?: () => void;
@@ -18,6 +19,7 @@ type PropriedadesSidebar = {
 export function Sidebar({
   perfilUsuario,
   equipeNome,
+  temProjetosCoordenados = false,
   expandida = false,
   sempreExpandida = false,
   onExpandir,
@@ -25,14 +27,15 @@ export function Sidebar({
 }: PropriedadesSidebar) {
   const itensVisiveis = useMemo(() => {
     return NAVEGACAO_PRINCIPAL.filter((item) =>
-      item.podeExibir({ perfilUsuario, equipeNome }),
+      item.podeExibir({ perfilUsuario, equipeNome, temProjetosCoordenados }),
     );
-  }, [perfilUsuario, equipeNome]);
+  }, [perfilUsuario, equipeNome, temProjetosCoordenados]);
 
   return (
     <aside
       className="sidebar-theme sidebar-shell hidden shrink-0 lg:fixed lg:inset-y-0 lg:left-0 lg:block"
       data-sidebar-state={expandida ? "expanded" : "collapsed"}
+      data-sidebar-pinned={sempreExpandida ? "true" : "false"}
       onMouseEnter={onExpandir}
       onMouseLeave={onRecolher}
     >

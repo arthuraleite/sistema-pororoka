@@ -16,6 +16,7 @@ type PropriedadesAppShell = {
   avatarUrl?: string | null;
   perfilUsuario?: string | null;
   equipeNome?: string | null;
+  temProjetosCoordenados?: boolean;
 };
 
 export function AppShell({
@@ -25,6 +26,7 @@ export function AppShell({
   avatarUrl,
   perfilUsuario,
   equipeNome,
+  temProjetosCoordenados = false,
 }: PropriedadesAppShell) {
   const pathname = usePathname();
   const [hoverPathname, setHoverPathname] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export function AppShell({
         <Sidebar
           perfilUsuario={perfilUsuario}
           equipeNome={equipeNome}
+          temProjetosCoordenados={temProjetosCoordenados}
           expandida={sidebarExpandida}
           sempreExpandida={sidebarSempreExpandida}
           onExpandir={() => {

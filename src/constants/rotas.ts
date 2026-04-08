@@ -26,6 +26,7 @@ export const ROTAS_APP = {
 type ContextoPermissaoNavegacao = {
   perfilUsuario?: string | null;
   equipeNome?: string | null;
+  temProjetosCoordenados?: boolean;
 };
 
 export type ItemNavegacaoPrincipal = {
@@ -47,7 +48,18 @@ function ehAdminOuCoordenador(perfilUsuario?: string | null) {
   );
 }
 
-function podeVerProjetosOuFinanceiro({
+function podeVerProjetos({
+  perfilUsuario,
+  temProjetosCoordenados,
+}: ContextoPermissaoNavegacao) {
+  return (
+    ehAdminOuCoordenador(perfilUsuario) ||
+    perfilUsuario === PERFIS_USUARIO.GESTOR_FINANCEIRO ||
+    Boolean(temProjetosCoordenados)
+  );
+}
+
+function podeVerFinanceiro({
   perfilUsuario,
   equipeNome,
 }: ContextoPermissaoNavegacao) {
@@ -79,14 +91,14 @@ export const NAVEGACAO_PRINCIPAL: ItemNavegacaoPrincipal[] = [
     label: "Projetos",
     href: ROTAS_APP.projetos,
     icon: FolderKanban,
-    podeExibir: podeVerProjetosOuFinanceiro,
+    podeExibir: podeVerProjetos,
   },
   {
     key: "financeiro",
     label: "Financeiro",
     href: ROTAS_APP.financeiro,
     icon: Wallet,
-    podeExibir: podeVerProjetosOuFinanceiro,
+    podeExibir: podeVerFinanceiro,
   },
   {
     key: "espacos",

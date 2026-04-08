@@ -1,0 +1,335 @@
+# Guia orientador para construção de módulos (baseado no módulo **Tarefas**)
+
+## 1) Objetivo deste documento
+
+Este guia define um padrão obrigatório para criação de novos módulos no sistema, tomando o módulo **Tarefas** como referência oficial de arquitetura, UX, regras e fluxo de dados.
+
+Finalidade:
+
+- Garantir consistência visual entre módulos.
+- Garantir consistência de regras de negócio e permissões.
+- Garantir consistência de estrutura de código (camadas, nomenclatura e responsabilidades).
+- Reduzir divergências quando o módulo for implementado por IA (ChatGPT) ou por pessoas.
+
+> Regra principal: todo novo módulo deve seguir este guia e reaproveitar os mesmos padrões já aplicados em `tarefas`.
+
+---
+
+## 2) Princípios de construção de módulo
+
+1. **Experiência consistente**
+   - O usuário deve reconhecer rapidamente padrões de listagem, filtros, criação, edição, visualização e feedback de erro/sucesso.
+
+2. **Separação por camadas (obrigatório)**
+   - Interface (componentes/página cliente).
+   - Orquestração server-side (actions).
+   - Regras de negócio (services).
+   - Acesso a dados (repositories).
+   - Contratos de dados (types).
+   - Validação de entrada (schemas Zod).
+
+3. **Permissão por contexto de usuário**
+   - Toda operação deve considerar usuário autenticado, perfil e equipe.
+   - O service é o guardião final das regras de acesso.
+
+4. **Validação forte e mensagens claras**
+   - Toda entrada deve passar por schema.
+   - Mensagens de erro devem ser específicas e úteis para operação.
+
+5. **UI orientada a estado**
+   - O módulo precisa prever estados: carregando, vazio, erro, sucesso, processamento parcial.
+
+---
+
+## 3) Estrutura obrigatória de pastas e arquivos
+
+Para um novo módulo `X`, replicar o padrão abaixo:
+
+```txt
+src/
+  app/(privado)/x/
+    page.tsx
+    loading.tsx
+    error.tsx
+
+  components/x/
+    x-page-client.tsx
+    x-section.tsx
+    x-filters.tsx
+    x-view-switcher.tsx          # quando aplicável
+    x-modal-shell.tsx            # quando aplicável
+    ...subcomponentes específicos
+
+  actions/x/
+    listar-x.ts
+    buscar-x.ts
+    criar-x.ts
+    editar-x.ts
+    excluir-x.ts
+    ...ações adicionais
+
+  services/x/
+    x.service.ts
+    ...subservices (opcional)
+
+  repositories/x/
+    x.repository.ts
+    ...repositórios auxiliares
+
+  schemas/x/
+    x-create.schema.ts
+    x-edit.schema.ts
+    ...schemas complementares
+
+  types/x/
+    x.types.ts
+```
+
+### Regras de nomenclatura
+
+- **Pastas e arquivos:** kebab-case.
+- **Componentes React:** PascalCase.
+- **Funções utilitárias:** camelCase.
+- **Tipos:** PascalCase com sufixos semânticos (`Input`, `Detalhe`, `Paginadas`, `ResultadoOperacao...`).
+
+---
+
+## 4) Fluxo interno obrigatório (fim a fim)
+
+### 4.1 Carregamento inicial (`page.tsx`)
+
+- Deve executar chamadas iniciais em paralelo (`Promise.all`).
+- Deve montar o payload inicial do módulo (dados, catálogos, usuário atual etc.).
+- Deve repassar os resultados ao `XPageClient`.
+
+### 4.2 Ações server (`src/actions/x`)
+
+Cada action deve:
+
+1. Ter `"use server"` quando aplicável.
+2. Obter cliente Supabase de servidor.
+3. Validar autenticação e contexto mínimo do usuário.
+4. Delegar regra de negócio para `service` (não concentrar regra na action).
+5. Retornar um envelope padrão de resposta:
+
+```ts
+{
+  sucesso: boolean;
+  mensagem: string;
+  data?: T;
+}
+```
+
+6. Tratar exceções com `try/catch`, log técnico em `console.error` e mensagem final segura para consumo do front.
+
+### 4.3 Services (`src/services/x`)
+
+Responsabilidades obrigatórias:
+
+- Aplicar regras de negócio do domínio.
+- Aplicar regras de permissão por perfil/equipe.
+- Aplicar validações de negócio que vão além do schema (ex.: limites, obrigatoriedade contextual).
+- Chamar repositories para leitura/escrita.
+
+Regras:
+
+- Nunca depender de estado global implícito.
+- Isolar helpers de autorização por função (`podeVerTudo`, `podeCriar...`, `podeEditar...`).
+- Falhar rápido com `throw new Error("mensagem clara")`.
+
+### 4.4 Repositories (`src/repositories/x`)
+
+Responsabilidades:
+
+- Encapsular chamadas de banco/RPC.
+- Mapear rows de banco para tipos de domínio do módulo.
+- Centralizar consultas e joins do módulo.
+
+Regras:
+
+- Não colocar regra de negócio complexa no repository.
+- Tratar estruturas de retorno do Supabase (objeto/array/null) com helpers consistentes.
+- Manter mapeadores dedicados (`mapXRow`, `mapYRow`).
+
+### 4.5 Schemas (`src/schemas/x`)
+
+- Usar Zod para toda entrada de criação/edição/ações específicas.
+- Aplicar limites de tamanho, formatos e enums de domínio.
+- Usar `discriminatedUnion` quando houver múltiplos subtipos de entidade.
+- Padronizar normalização de opcionalidade (string vazia para `null`, por exemplo).
+
+### 4.6 Types (`src/types/x`)
+
+- Centralizar tipos do domínio no arquivo do módulo.
+- Ter tipos para:
+  - Entidade de listagem.
+  - Entidade detalhada.
+  - Inputs de criação/edição.
+  - Filtros.
+  - Resultado operacional padronizado.
+
+---
+
+## 5) Regras visuais obrigatórias (UI/UX)
+
+### 5.1 Tokens e tema
+
+- Usar variáveis de tema globais (`var(--surface-*)`, `var(--text-*)`, `var(--border)`, `var(--button-*)`).
+- Evitar cores hardcoded quando houver token equivalente.
+
+### 5.2 Estrutura visual da página
+
+Todo módulo deve ter:
+
+1. **Cabeçalho da seção**
+   - Título claro do módulo.
+   - Contador de registros quando fizer sentido.
+   - Descrição curta de objetivo da seção.
+
+2. **Área de ação primária**
+   - Botão principal de criação (`Adicionar ...`, `Criar ...`) com estilo primário.
+
+3. **Filtros padronizados**
+   - Busca textual.
+   - Status/prioridade/categoria/equipe/responsável quando aplicável.
+   - Ordenação.
+   - Ação de limpar filtros.
+
+4. **Área de visualização**
+   - Suporte a múltiplas views quando fizer sentido (kanban/tabela/calendário).
+   - Estado vazio padronizado com texto claro.
+
+### 5.3 Modal padrão
+
+Quando o módulo usar modal de detalhe/formulário:
+
+- Estrutura com:
+  - Header (título, subtítulo opcional, botão fechar).
+  - Conteúdo principal (formulário/detalhes).
+  - Sidebar contextual.
+  - Footer opcional com ações.
+- Overlay com destaque visual e foco de uso.
+- Responsivo: coluna única em menor viewport, duas colunas em desktop quando necessário.
+
+### 5.4 Feedback de interação
+
+- Exibir estados de carregamento e bloqueio de ação (submissão/processamento).
+- Mensagens de erro próximas ao contexto.
+- Mensagens de sucesso consistentes com linguagem do sistema.
+
+---
+
+## 6) Regras funcionais obrigatórias
+
+1. **Permissão em dois níveis**
+   - UI: habilitar/ocultar ações por perfil para orientar experiência.
+   - Service: validar novamente para segurança.
+
+2. **Filtro inicial orientado ao usuário atual**
+   - Sempre que aplicável, iniciar com recorte do usuário atual (ex.: responsável atual).
+
+3. **Ordenação padrão definida**
+   - Todo módulo deve ter ordenação default explícita.
+
+4. **Paginação explícita**
+   - Definir `pagina` e `limite` padrão nas listagens.
+
+5. **Limites de domínio**
+   - Ex.: quantidade máxima de anexos/links, tamanho de texto, combinações válidas de campos.
+   - Limites devem estar em schema e reforçados em service quando crítico.
+
+6. **Histórico/comentários/relacionamentos (quando aplicável)**
+   - Seguir padrão de entidades relacionadas via componentes dedicados e actions específicas.
+
+---
+
+## 7) Contratos de dados e compatibilidade
+
+- Não quebrar o contrato público dos tipos sem migração planejada.
+- Sempre manter correspondência explícita entre:
+  - Colunas da base.
+  - Tipos do domínio.
+  - Campos exibidos na UI.
+- Em casos de transformação (snake_case -> camelCase), manter mapeamento centralizado no repository.
+
+---
+
+## 8) Padrão de erros e observabilidade
+
+1. **No backend/action**
+   - Capturar erro bruto.
+   - Logar mensagem e stack (quando existir).
+   - Retornar mensagem de domínio compreensível para o front.
+
+2. **No frontend**
+   - Exibir `erroInicial` de carregamento e `erroAcao` de operações.
+   - Nunca silenciar erros de operação do usuário.
+
+3. **Mensagens**
+   - Objetivas, em português e acionáveis.
+   - Evitar mensagens genéricas sem contexto.
+
+---
+
+## 9) Checklist obrigatório para criar um novo módulo
+
+Antes de concluir, validar:
+
+- [ ] Existe `page.tsx`, `loading.tsx`, `error.tsx` do módulo.
+- [ ] Existe `XPageClient` centralizando estado da interface.
+- [ ] Existem actions para listar/buscar/criar/editar/excluir (ou equivalente do domínio).
+- [ ] Existe service com regras de permissão e negócio.
+- [ ] Existe repository com mapeamento de dados.
+- [ ] Existem schemas Zod para todas entradas mutáveis.
+- [ ] Existem tipos completos no `types/x`.
+- [ ] Existem filtros padronizados e ordenação default.
+- [ ] Existem estados de erro, vazio e carregamento.
+- [ ] Existe revisão de consistência visual com tokens de tema.
+- [ ] Existe validação de perfil/equipe no service.
+
+---
+
+## 10) Template operacional para o ChatGPT criar novos módulos
+
+Ao solicitar criação de um módulo novo para IA, use o prompt-base:
+
+```txt
+Crie o módulo [NOME] seguindo exatamente o padrão arquitetural, visual e funcional do módulo tarefas.
+
+Requisitos obrigatórios:
+1) Estrutura por camadas (app/components/actions/services/repositories/schemas/types).
+2) Padrão de retorno das actions com {sucesso, mensagem, data}.
+3) Validação Zod para criação/edição/operações.
+4) Permissões em service com base em usuário/perfil/equipe.
+5) UI com seção principal, filtros, view principal e estados (carregando/vazio/erro).
+6) Uso dos tokens visuais globais (surface/text/border/button).
+7) Nomenclatura e organização iguais ao padrão do módulo tarefas.
+8) Sem criar padrões alternativos fora deste guia.
+
+Entregue arquivos completos por camada e descreva as decisões adotadas.
+```
+
+---
+
+## 11) Política de não divergência
+
+É proibido:
+
+- Criar fluxo de dados fora do padrão em camadas.
+- Colocar regra de negócio principal diretamente em componente React.
+- Ignorar validação por schema em operações mutáveis.
+- Criar estilos desconectados dos tokens globais.
+- Implementar controle de permissão somente no frontend.
+
+Se houver necessidade excepcional de desvio, isso deve ser documentado em ADR (Architecture Decision Record) com justificativa e impacto.
+
+---
+
+## 12) Resultado esperado
+
+Seguindo este guia, qualquer novo módulo terá:
+
+- A mesma linguagem visual e de interação do módulo tarefas.
+- O mesmo nível de segurança e controle de acesso.
+- A mesma previsibilidade técnica para manutenção e evolução.
+- Maior confiabilidade na geração de código por IA sem “inventar” processos diferentes.

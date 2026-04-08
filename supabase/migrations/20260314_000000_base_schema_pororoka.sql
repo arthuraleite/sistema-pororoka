@@ -7,7 +7,6 @@ begin;
 --   public.usuarios.id = auth.users.id
 -- =========================================================
 
-
 create extension if not exists pgcrypto;
 create extension if not exists unaccent;
 
@@ -82,7 +81,6 @@ create index idx_auditoria_eventos_entidade on public.auditoria_eventos(entidade
 create index idx_auditoria_eventos_entidade_id on public.auditoria_eventos(entidade_id);
 create index idx_auditoria_eventos_data_evento on public.auditoria_eventos(data_evento desc);
 
-
 -- =========================================================
 -- ENUMS DO MÓDULO DE PROJETOS
 -- =========================================================
@@ -102,6 +100,22 @@ create type public.status_projeto as enum (
 -- =========================================================
 -- TABELAS DO MÓDULO DE PROJETOS
 -- =========================================================
+
+create table public.financiadores (
+  id uuid primary key default gen_random_uuid(),
+  nome text not null,
+  data_criacao timestamptz not null default now(),
+  data_atualizacao timestamptz not null default now(),
+
+  constraint chk_financiadores_nome_nao_vazio
+    check (btrim(nome) <> '')
+);
+
+create unique index uq_financiadores_nome_normalizado
+  on public.financiadores (public.normalizar_texto_busca(nome));
+
+create index idx_financiadores_data_criacao
+  on public.financiadores (data_criacao desc);
 
 create table public.rubricas_globais (
   id uuid primary key default gen_random_uuid(),
@@ -140,7 +154,7 @@ create table public.projetos (
   nome text not null,
   sigla text not null,
   resumo text null,
-  financiador text null,
+  financiador_id uuid null,
   data_inicio date not null,
   data_fim date null,
   orcamento_total numeric(14,2) null,
@@ -149,6 +163,11 @@ create table public.projetos (
   observacoes text null,
   data_criacao timestamptz not null default now(),
   data_atualizacao timestamptz not null default now(),
+
+  constraint fk_projetos_financiador
+    foreign key (financiador_id)
+    references public.financiadores(id)
+    on delete restrict,
 
   constraint fk_projetos_coordenador
     foreign key (coordenador_id)
@@ -171,14 +190,13 @@ create table public.projetos (
     check (
       (
         tipo = 'interno'
-        and financiador is null
+        and financiador_id is null
         and orcamento_total is null
       )
       or
       (
         tipo = 'financiado'
-        and financiador is not null
-        and btrim(financiador) <> ''
+        and financiador_id is not null
         and orcamento_total is not null
         and orcamento_total > 0
       )
@@ -188,6 +206,7 @@ create table public.projetos (
 create index idx_projetos_tipo on public.projetos (tipo);
 create index idx_projetos_status on public.projetos (status);
 create index idx_projetos_coordenador_id on public.projetos (coordenador_id);
+create index idx_projetos_financiador_id on public.projetos (financiador_id);
 create index idx_projetos_data_inicio on public.projetos (data_inicio);
 create index idx_projetos_data_criacao on public.projetos (data_criacao desc);
 
@@ -380,6 +399,7 @@ create table public.tarefas (
     foreign key (categoria_id, equipe_id)
     references public.categorias_tarefa(id, equipe_id)
     on delete restrict,
+
   constraint fk_tarefas_projeto
     foreign key (projeto_id)
     references public.projetos(id)
@@ -693,10 +713,48 @@ as $$
   );
 $$;
 
-
 -- =========================================================
 -- FUNÇÕES AUXILIARES DO MÓDULO DE PROJETOS
 -- =========================================================
+
+create or replace function public.fn_pode_acessar_modulo_projetos()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.usuarios u
+    where u.id = auth.uid()
+      and u.status = 'ativo'
+      and (
+        u.perfil in ('admin_supremo', 'coordenador_geral', 'gestor_financeiro')
+        or exists (
+          select 1
+          from public.projetos p
+          where p.coordenador_id = u.id
+        )
+      )
+  )
+$$;
+
+create or replace function public.fn_pode_gerir_financiador()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.usuarios u
+    where u.id = auth.uid()
+      and u.status = 'ativo'
+      and u.perfil in ('admin_supremo', 'coordenador_geral', 'gestor_financeiro')
+  )
+$$;
 
 create or replace function public.fn_pode_gerir_rubrica_global()
 returns boolean
@@ -728,7 +786,7 @@ as $$
     where p.id = p_projeto_id
       and u.status = 'ativo'
       and (
-        u.perfil in ('admin_supremo', 'coordenador_geral')
+        u.perfil in ('admin_supremo', 'coordenador_geral', 'gestor_financeiro')
         or p.coordenador_id = u.id
       )
   )
@@ -1372,6 +1430,7 @@ $$;
 alter table public.equipes enable row level security;
 alter table public.usuarios enable row level security;
 alter table public.auditoria_eventos enable row level security;
+alter table public.financiadores enable row level security;
 alter table public.rubricas_globais enable row level security;
 alter table public.projetos enable row level security;
 alter table public.projeto_links enable row level security;
@@ -1495,10 +1554,34 @@ with check (
   )
 );
 
+-- =========================================================
+-- POLICIES - PROJETOS, FINANCIADORES E RUBRICAS
+-- =========================================================
 
--- =========================================================
--- POLICIES - PROJETOS E RUBRICAS
--- =========================================================
+create policy "financiadores_select"
+on public.financiadores
+for select
+to authenticated
+using (public.fn_pode_acessar_modulo_projetos());
+
+create policy "financiadores_insert"
+on public.financiadores
+for insert
+to authenticated
+with check (public.fn_pode_gerir_financiador());
+
+create policy "financiadores_update"
+on public.financiadores
+for update
+to authenticated
+using (public.fn_pode_gerir_financiador())
+with check (public.fn_pode_gerir_financiador());
+
+create policy "financiadores_delete"
+on public.financiadores
+for delete
+to authenticated
+using (false);
 
 create policy "rubricas_globais_select"
 on public.rubricas_globais
@@ -2001,6 +2084,11 @@ execute function public.definir_data_atualizacao();
 
 create trigger trg_usuarios_data_atualizacao
 before update on public.usuarios
+for each row
+execute function public.definir_data_atualizacao();
+
+create trigger trg_financiadores_data_atualizacao
+before update on public.financiadores
 for each row
 execute function public.definir_data_atualizacao();
 
